@@ -12,7 +12,7 @@
 <body>
 
 <div id="app" style="display:none">
-  <!-- Faixa superior (full width) -->
+  
   <header class="topband">
     <span class="tb-title">Prospecta <span class="tb-tagline">Gestão de Substabelecidos</span></span>
     <div class="tb-ticker" id="tbTicker" aria-hidden="true">
@@ -22,9 +22,9 @@
   </header>
 
   <div class="shell">
-  <!-- Coluna lateral: painel de página inteira -->
+  
   <div class="sidebar-col">
-    <!-- Menu de abas (só gestor) -->
+    
     <nav class="tabs" id="tabs" style="display:none">
       <button class="tab active" data-tab="painel">
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
@@ -56,7 +56,6 @@
       </button>
     </nav>
 
-    <!-- Menu de abas (só consulta) -->
     <nav class="tabs" id="tabsCons">
       <button class="tab active" data-consview="welcome">
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/></svg>
@@ -112,7 +111,7 @@
         <button class="btn sm block" id="limparBtn">Limpar filtros</button>
       </div>
     </aside>
-  </div><!-- /sidebar-col -->
+  </div>
 
   <div class="wrap">
   <header class="top">
@@ -143,7 +142,7 @@
   <div class="agenda-alert" id="agendaAlert" style="display:none"></div>
 
   <main class="content">
-    <!-- Boas-vindas (só consulta, inicial) -->
+    
     <div id="viewWelcome">
       <div class="welcome">
         <h2>Bem-vindo(a) à Prospecta</h2>
@@ -152,13 +151,11 @@
     </div>
 
     <div id="viewSubs" style="display:none">
-    <!-- Filtros no topo (preenchido via JS) -->
+    
     <div class="tablecard filtros-top" id="filtrosTop" style="display:none"></div>
 
-    <!-- KPIs (só gestor) -->
     <section id="kpis" class="kpis" style="display:none"></section>
 
-    <!-- Tabela -->
     <div class="tablecard">
       <div class="tablebar">
         <span class="count" id="count">—</span>
@@ -187,9 +184,8 @@
         <button class="btn sm" id="nextBtn">Próxima →</button>
       </div>
     </div>
-    </div><!-- /viewSubs -->
+    </div>
 
-  <!-- View: Bancos (modo consulta, read-only) -->
   <div id="viewBancosConsulta" style="display:none">
     <div class="tablecard">
       <div class="tablebar">
@@ -211,7 +207,6 @@
     </div>
   </div>
 
-  <!-- View: Bancos cadastrados (só gestor) -->
   <div id="viewBancos" style="display:none">
     <div class="tablecard">
       <div class="tablebar">
@@ -235,7 +230,6 @@
     </div>
   </div>
 
-  <!-- View: Produção (só gestor) -->
   <div id="viewProducao" style="display:none">
     <div class="prod-filtros">
       <div class="field prod-field-sub">
@@ -312,7 +306,6 @@
     </div>
   </div>
 
-  <!-- View: Agenda (só gestor) -->
   <div id="viewAgenda" style="display:none">
     <div class="agenda-layout">
       <div class="tablecard">
@@ -334,7 +327,6 @@
     </div>
   </div>
 
-  <!-- View: Histórico (só gestor) -->
   <div id="viewHist" style="display:none">
     <div class="tablecard">
       <div class="tablebar">
@@ -354,7 +346,6 @@
     </div>
   </div>
 
-  <!-- View: Dúvidas recebidas (só gestor) -->
   <div id="viewDuvidas" style="display:none">
     <div class="tablecard">
       <div class="tablebar">
@@ -373,14 +364,12 @@
     </div>
   </div>
 
-  <!-- View: Painel Sintético (só gestor) -->
   <div id="viewPainel" style="display:none"></div>
   </main>
-  </div><!-- /wrap -->
-  </div><!-- /shell -->
-</div><!-- /app -->
+  </div>
+  </div>
+</div>
 
-<!-- Tela de setup (quando config não preenchida) -->
 <div class="setup" id="setupScreen" style="display:none">
   <h2>⚙️ Configuração necessária</h2>
   <p>Antes de usar, edite o bloco <code>CONFIG</code> no topo de <code>app.js</code> e preencha:</p>
@@ -391,7 +380,6 @@
   <p>A tabela usada é <code>substabelecidos</code>. Salve o arquivo e recarregue.</p>
 </div>
 
-<!-- Modal: login gestor -->
 <div class="overlay" id="loginOverlay">
   <div class="modal login-modal">
     <div class="login-hero">
@@ -405,18 +393,18 @@
       <h2>Área do Gestor</h2>
       <p class="login-sub">Ambiente exclusivo para gestores autorizados da Prospecta. Todas as ações realizadas aqui ficam registradas no histórico do sistema.</p>
     </div>
-    <div class="modal-body login-body">
+    <form class="modal-body login-body" id="loginForm" onsubmit="return false">
       <div class="field">
         <label>Login</label>
-        <input id="loginUser" type="text" placeholder="Seu login de gestor" autocomplete="off">
+        <input id="loginUser" type="text" placeholder="Seu login de gestor" autocomplete="username">
       </div>
       <div class="field">
         <label>Senha</label>
-        <input id="loginPass" type="password" placeholder="Sua senha" autocomplete="off">
+        <input id="loginPass" type="password" placeholder="Sua senha" autocomplete="current-password">
       </div>
       <div class="hint" id="loginHint"></div>
       <p class="login-aviso">Se você é consultor, não é necessário entrar — utilize o modo de consulta na tela principal.</p>
-    </div>
+    </form>
     <div class="modal-foot">
       <button class="btn ghost" data-close>Cancelar</button>
       <button class="btn primary" id="loginConfirm">Entrar na área do gestor</button>
@@ -424,7 +412,6 @@
   </div>
 </div>
 
-<!-- Modal: form criar/editar -->
 <div class="overlay" id="formOverlay">
   <div class="modal">
     <div class="modal-head"><h2 id="formTitle">Novo substabelecido</h2><button class="x" data-close>&times;</button></div>
@@ -465,7 +452,6 @@
   </div>
 </div>
 
-<!-- Modal: criar/editar banco -->
 <div class="overlay" id="bancoOverlay">
   <div class="modal">
     <div class="modal-head"><h2 id="bancoTitle">Novo banco</h2><button class="x" data-close>&times;</button></div>
@@ -494,7 +480,6 @@
   </div>
 </div>
 
-<!-- Modal: passo a passo (por banco) -->
 <div class="overlay" id="passoOverlay">
   <div class="modal passo-modal">
     <div class="modal-head"><h2 id="passoTitle">Passo a passo</h2><button class="x" data-close>&times;</button></div>
@@ -525,7 +510,6 @@
   </div>
 </div>
 
-<!-- Modal: observações (chat, por sub) -->
 <div class="overlay" id="obsOverlay">
   <div class="modal obs-modal">
     <div class="modal-head"><h2 id="obsTitle">Observações</h2><button class="x" data-close>&times;</button></div>
@@ -562,7 +546,6 @@
   </div>
 </div>
 
-<!-- Modal: novo/editar compromisso -->
 <div class="overlay" id="agendaOverlay">
   <div class="modal">
     <div class="modal-head"><h2 id="agendaTitle">Novo compromisso</h2><button class="x" data-close>&times;</button></div>
@@ -612,7 +595,6 @@
   </div>
 </div>
 
-<!-- Modal: responder dúvida -->
 <div class="overlay" id="respOverlay">
   <div class="modal sm">
     <div class="modal-head"><h2>Responder dúvida</h2><button class="x" data-close>&times;</button></div>
@@ -630,7 +612,6 @@
   </div>
 </div>
 
-<!-- Modal: minhas dúvidas (consultor) -->
 <div class="overlay" id="minhasOverlay">
   <div class="modal">
     <div class="modal-head"><h2>Minhas dúvidas</h2><button class="x" data-close>&times;</button></div>
@@ -643,7 +624,6 @@
   </div>
 </div>
 
-<!-- Modal: enviar dúvida ao gestor (consulta) -->
 <div class="overlay" id="duvidaOverlay">
   <div class="modal sm">
     <div class="modal-head"><h2>Dúvida no cadastro?</h2><button class="x" data-close>&times;</button></div>
@@ -665,7 +645,6 @@
   </div>
 </div>
 
-<!-- Modal: ficha do substabelecido -->
 <div class="overlay" id="subOverlay">
   <div class="modal det-modal sub-modal">
     <div class="modal-head det-head">
@@ -684,7 +663,6 @@
   </div>
 </div>
 
-<!-- Modal: detalhe do painel sintético -->
 <div class="overlay" id="detalheOverlay">
   <div class="modal det-modal">
     <div class="modal-head det-head">

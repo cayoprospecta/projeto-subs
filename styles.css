@@ -1,22 +1,17 @@
-/* ============================================================
-   PROSPECTA · Substabelecidos
-   Redesign — corporativo sóbrio (bancário)
-   Tema branco · paleta azul · zero border-radius
-   Fontes: Source Serif 4 (display) · Inter (UI) · IBM Plex Mono (dados)
-   ============================================================ */
+
 
 :root{
-  /* superfícies */
+  
   --bg:#f3f6fa; --bg2:#eaf0f7; --panel:#ffffff; --panel2:#f6f9fd;
   --line:#dfe6f0; --line2:#c8d4e5;
   --col-alt:rgba(26,86,196,.04);
-  /* texto */
+  
   --txt:#122135; --muted:#54687f; --dim:#7f92a9;
-  /* azul institucional (mantém nomes de vars usados pelo app.js) */
+  
   --cyan:#1a56c4; --cyan-dim:#12409a;
-  /* status */
+  
   --ativo:#0e8a5f; --inativo:#c93a3f; --warn:#a06514;
-  /* navy — faixa superior e sidebar */
+  
   --side-bg:#0f1f38; --side-bg2:#182b4c; --side-line:#26395c;
   --side-txt:#e9eef8; --side-muted:#9aabc9; --side-dim:#6c7fa3;
 
@@ -31,7 +26,7 @@
 }
 
 *{box-sizing:border-box;border-radius:0!important}
-/* exceções obrigatórias: elementos que precisam ser círculos (gráfico donut) */
+
 .donut,.donut-hole{border-radius:50%!important}
 
 html,body{margin:0;height:100%}
@@ -54,7 +49,6 @@ a{color:var(--cyan)}
 ::-webkit-scrollbar-thumb:hover{background:#a9bcd6}
 ::-webkit-scrollbar-track{background:transparent}
 
-/* ==================== FAIXA SUPERIOR ==================== */
 .topband{
   height:var(--tb-h);flex:0 0 auto;
   background:var(--side-bg);color:var(--side-txt);
@@ -82,7 +76,6 @@ a{color:var(--cyan)}
 #tbClock{font-family:var(--mono);font-weight:600;font-size:16px;color:#fff;font-variant-numeric:tabular-nums}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* ==================== SIDEBAR (trilho de ícones, fixo) ==================== */
 .sidebar-col{
   flex:0 0 84px;flex-basis:84px!important;
   position:sticky;top:var(--tb-h);align-self:flex-start;
@@ -104,7 +97,6 @@ a{color:var(--cyan)}
 .sidebar-col .sidebar,
 .sidebar-col #duvidaBar{display:none!important}
 
-/* filtros dentro da sidebar (só usados no layout mobile) */
 .sidebar{
   background:var(--side-bg2);border:1px solid var(--side-line);color:var(--side-txt);
   padding:16px;box-shadow:none;display:flex;flex-direction:column;gap:14px;
@@ -120,7 +112,6 @@ a{color:var(--cyan)}
 .sidebar .duvida-desc{color:var(--side-muted)}
 .btn.block{width:100%;justify-content:center}
 
-/* ==================== ÁREA PRINCIPAL ==================== */
 .wrap{flex:1;min-width:0;max-width:1760px;padding:26px 36px 72px}
 .content{flex:1;min-width:0}
 
@@ -148,7 +139,6 @@ header.top .notif-wrap .btn{
 }
 .mode-pill b{color:var(--cyan)}
 
-/* ==================== BOTÕES ==================== */
 .btn{
   border:1px solid var(--line2);
   background:#fff;color:var(--txt);
@@ -171,7 +161,6 @@ header.top .notif-wrap .btn{
 .linklike:hover{text-decoration-color:var(--cyan)}
 .obs-dot{color:var(--warn);font-size:11px;vertical-align:middle}
 
-/* ==================== NOTIFICAÇÕES ==================== */
 .notif-wrap{position:relative}
 .btn.icon{width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:17px;position:relative}
 .notif-badge{
@@ -200,7 +189,6 @@ header.top .notif-wrap .btn{
 .notif-pergunta{margin-top:4px;font-size:12.5px;color:var(--muted)}
 .notif-empty{padding:30px 18px;text-align:center;font-size:13.5px;color:var(--muted)}
 
-/* ==================== BOAS-VINDAS (consulta) ==================== */
 .welcome{max-width:660px;margin:9vh auto 0;text-align:center;padding:0 20px;animation:viewIn .4s ease both}
 .welcome h2{font-family:var(--disp);font-weight:700;font-size:34px;color:var(--txt);margin:0 0 8px}
 .welcome h2::after{content:"";display:block;width:56px;height:3px;background:var(--cyan);margin:18px auto 0}
@@ -209,7 +197,6 @@ header.top .notif-wrap .btn{
 .welcome-link{cursor:pointer;border-bottom:1px dashed rgba(26,86,196,.4);padding-bottom:1px;transition:.12s}
 .welcome-link:hover{color:var(--cyan-dim);border-bottom-color:var(--cyan-dim)}
 
-/* ==================== FILTROS ==================== */
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field input,.field select,.field textarea{width:100%;max-width:100%}
 .field label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);font-weight:600}
@@ -225,13 +212,11 @@ header.top .notif-wrap .btn{
 .field input[readonly]{background:var(--panel2);color:var(--muted);cursor:not-allowed;box-shadow:none}
 .field select option{background:var(--panel)}
 
-/* filtros no topo (modo gestor) */
 .filtros-top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;padding:16px 20px;margin-bottom:20px}
 .filtros-top #filtrosWrap{display:contents}
 .filtros-top .field{flex:1;min-width:150px;gap:6px}
 .filtros-top .btn.block{width:auto;align-self:flex-end}
 
-/* ==================== KPIs ==================== */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:26px}
 .kpi{
   background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--line2);
@@ -254,7 +239,6 @@ header.top .notif-wrap .btn{
 .k-bar .track{flex:1 1 100%;order:3;height:7px;background:var(--bg2);overflow:hidden;width:100%}
 .k-bar .fill{height:100%;background:linear-gradient(90deg,var(--cyan),#4a83e8)}
 
-/* ==================== TABELAS (estilo extrato) ==================== */
 .tablecard{background:var(--panel);border:1px solid var(--line);overflow:hidden;box-shadow:var(--shadow-sm)}
 .tablebar{display:flex;align-items:center;gap:13px;padding:15px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:var(--panel2)}
 .tablebar .count{font-size:14px;color:var(--muted)}
@@ -289,7 +273,6 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .badge.andamento{color:var(--cyan-dim);background:#eaf1fc;border-color:#b9cff2}
 .badge.none{color:var(--dim);background:var(--panel2);border-color:var(--line2)}
 
-/* ==================== POPOVER: ALTERAR STATUS ==================== */
 .status-popover{
   position:absolute;z-index:250;width:196px;
   background:var(--panel);border:1px solid var(--line2);border-top:2px solid var(--cyan);
@@ -318,7 +301,6 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .pager .info{font-size:13px;color:var(--muted);margin-right:auto;font-family:var(--mono);font-size:12.5px}
 .modal-foot .spacer{flex:1}
 
-/* ==================== PAINEL SINTÉTICO ==================== */
 .painel-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:18px}
 .painel-card{background:var(--panel);border:1px solid var(--line);padding:18px 20px;box-shadow:var(--shadow-sm)}
 .painel-card.wide{grid-column:1/-1}
@@ -353,7 +335,6 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .dl-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dl-empty{color:var(--muted);font-size:13px}
 
-/* torres (barras verticais animadas) */
 .tower{display:flex;align-items:flex-end;gap:10px;height:190px;padding:8px 2px 0;overflow-x:auto;overflow-y:hidden}
 .tower-bar{flex:1 0 36px;min-width:36px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
 .tw-val{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--txt);margin-bottom:4px}
@@ -362,13 +343,11 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .tw-col:hover{filter:brightness(1.12)}
 .tw-lab{font-size:11px;color:var(--muted);margin-top:6px;max-width:56px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* barras clicáveis (abrem detalhe) */
 .tw-click{cursor:pointer}
 .tw-click:hover .tw-col{filter:brightness(1.15)}
 .tw-click:hover .tw-lab{color:var(--cyan);font-weight:600}
 .tw-click:hover .tw-val{color:var(--cyan)}
 
-/* ==================== MODAL: DETALHE DO PAINEL ==================== */
 .det-modal{max-width:720px}
 .det-head{align-items:flex-start}
 .det-kicker{display:block;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);margin-bottom:3px}
@@ -396,7 +375,6 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .det-meta b{font-family:var(--mono);font-weight:500;font-size:12.5px;color:var(--muted)}
 .det-bars{margin-top:14px}
 
-/* ==================== PRODUÇÃO MENSAL ==================== */
 .prod-filtros{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;padding:16px 20px;margin-bottom:22px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .prod-field-sub{position:relative;flex:1 1 320px;min-width:260px}
 .prod-field-banco,.prod-field-mes{flex:0 1 220px;min-width:180px}
@@ -423,7 +401,6 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
   .prod-field-banco,.prod-field-mes{flex:1}
 }
 
-/* ==================== MODAL: FICHA DO SUBSTABELECIDO ==================== */
 tr[data-rowid]{cursor:pointer}
 .sub-modal{max-width:780px}
 .sub-grid{
@@ -444,7 +421,6 @@ tr[data-rowid]{cursor:pointer}
 .sub-obs-list{display:flex;flex-direction:column;gap:10px;margin-top:12px;max-height:300px;overflow:auto;padding-right:4px}
 @media(max-width:640px){.sub-grid{grid-template-columns:1fr}}
 
-/* ==================== TELEFONE -> WHATSAPP ==================== */
 .tel-whats{
   color:var(--cyan-dim);text-decoration:none;font-weight:500;
   border-bottom:1px dashed rgba(26,86,196,.45);padding-bottom:1px;
@@ -453,7 +429,6 @@ tr[data-rowid]{cursor:pointer}
 .tel-whats:hover{color:#0b8a4d;border-bottom-color:#0b8a4d}
 .tel-whats:hover::after{color:#0b8a4d}
 
-/* ==================== PASSO A PASSO + ANEXOS ==================== */
 .passo-modal{max-width:940px}
 .passo-body{display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start}
 .passo-body .field textarea{min-height:340px}
@@ -483,7 +458,6 @@ tr[data-rowid]{cursor:pointer}
   .passo-anexos{border-left:none;padding-left:0;border-top:1px solid var(--line);padding-top:18px}
 }
 
-/* ==================== MODAL: OBSERVAÇÕES + DOCUMENTOS DO SUB ==================== */
 .obs-modal{max-width:900px}
 .obs-modal-body{display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start}
 .obs-col{display:flex;flex-direction:column;min-width:0}
@@ -502,7 +476,6 @@ tr[data-rowid]{cursor:pointer}
 .line-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
 @media(max-width:1280px){.painel-grid{grid-template-columns:1fr}}
 
-/* ==================== DÚVIDAS ==================== */
 .tab-badge{display:inline-block;min-width:18px;padding:1px 6px;margin-left:6px;background:var(--inativo);color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;text-align:center;vertical-align:2px}
 .duvidas-list{display:flex;flex-direction:column}
 .duvida-item{display:flex;flex-direction:column;gap:6px;padding:16px 20px;border-bottom:1px solid var(--line)}
@@ -521,13 +494,11 @@ tr[data-rowid]{cursor:pointer}
 }
 .duvida-desc{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
 
-/* abas horizontais do consultor (legado) */
 .cons-tabs{display:flex;gap:2px;margin-bottom:20px;border-bottom:2px solid var(--line)}
 .cons-tab{background:none;border:none;padding:12px 22px;font-size:15px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s}
 .cons-tab:hover{color:var(--txt)}
 .cons-tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
 
-/* ==================== OBSERVAÇÕES (chat) ==================== */
 .obs-blocks{display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;margin-bottom:14px;padding-right:4px}
 .obs-vazio{color:var(--muted);font-size:14px;padding:18px 0;text-align:center}
 .obs-block{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--cyan);padding:10px 13px}
@@ -542,7 +513,6 @@ tr[data-rowid]{cursor:pointer}
 .obs-input textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(26,86,196,.12);outline:none}
 .obs-input .btn{white-space:nowrap}
 
-/* ==================== AGENDA ==================== */
 .agenda-alert{
   display:flex;align-items:center;gap:10px;
   background:#fdf6e7;border:1px solid #e8d5a4;border-left:3px solid var(--warn);
@@ -585,7 +555,6 @@ tr[data-rowid]{cursor:pointer}
   .agenda-layout{grid-template-columns:1fr}
 }
 
-/* ==================== MODAIS ==================== */
 .overlay{position:fixed;inset:0;background:rgba(15,31,56,.42);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 .overlay.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line2);border-top:3px solid var(--cyan);box-shadow:var(--shadow);width:100%;max-width:880px;max-height:90vh;overflow-y:auto;overflow-x:hidden}
@@ -602,7 +571,6 @@ tr[data-rowid]{cursor:pointer}
 .hint.warn,.hint .warn{color:var(--inativo);font-weight:600}
 .hint.ok{color:var(--ativo);font-weight:600}
 
-/* ==================== MODAL: ÁREA DO GESTOR ==================== */
 .login-modal{max-width:520px;border-top:none}
 .login-hero{
   position:relative;background:var(--side-bg);color:var(--side-txt);
@@ -621,7 +589,6 @@ tr[data-rowid]{cursor:pointer}
 }
 .login-modal .modal-foot{padding:18px 34px}
 
-/* ==================== TOAST + SETUP ==================== */
 #toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:.25s;
   background:var(--side-bg);border:1px solid var(--side-line);border-left:3px solid var(--cyan);
@@ -634,7 +601,6 @@ tr[data-rowid]{cursor:pointer}
 .setup h2{font-family:var(--disp);margin-top:0;color:var(--txt)}
 .setup code{font-family:var(--mono);background:var(--panel2);padding:2px 6px;color:var(--cyan-dim);font-size:13.5px}
 
-/* ==================== ANIMAÇÕES ==================== */
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%!important;animation:spin .7s linear infinite;vertical-align:-3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -655,7 +621,6 @@ tr[data-rowid]{cursor:pointer}
 .painel-grid>.painel-card:nth-child(2){animation-delay:.08s}
 .painel-grid>.painel-card:nth-child(3){animation-delay:.16s}
 
-/* ==================== RESPONSIVO ==================== */
 @media(max-width:1200px){
   .wrap{padding:20px 22px 60px}
   .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
