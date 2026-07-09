@@ -2227,7 +2227,7 @@ function renderSugestoesProducao(q){
     if(vistos.has(k)) return false; vistos.add(k); return true;
   }).sort((a,b)=>norm(a.nome_subs).localeCompare(norm(b.nome_subs),"pt-BR"));
 
-  const results = todos.slice(0,40);
+  const results = todos;
 
   if(!results.length){ box.innerHTML='<div class="prod-sug-empty">Nenhum substabelecido encontrado.</div>'; box.style.display="block"; return; }
 
