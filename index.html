@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prospecta · Substabelecidos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app" style="display:none">
+  <!-- Faixa superior (full width) -->
+  <header class="topband">
+    <span class="tb-title">Prospecta <span class="tb-tagline">Gestão de Substabelecidos</span></span>
+    <div class="tb-ticker" id="tbTicker" aria-hidden="true">
+      <div class="tb-ticker-track" id="tickerTrack">Carregando clima…</div>
+    </div>
+    <div class="tb-clock"><span class="tb-clock-city">Brasília</span><span id="tbClock">--:--:--</span></div>
+  </header>
+
+  <div class="shell">
+  <!-- Coluna lateral: painel de página inteira -->
+  <div class="sidebar-col">
+    <!-- Menu de abas (só gestor) -->
+    <nav class="tabs" id="tabs" style="display:none">
+      <button class="tab active" data-tab="painel">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        Painel Sintético
+      </button>
+      <button class="tab" data-tab="subs">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+        Substabelecidos
+      </button>
+      <button class="tab" data-tab="bancos">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg>
+        Bancos cadastrados
+      </button>
+      <button class="tab" data-tab="producao">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
+        Produção
+      </button>
+      <button class="tab" data-tab="agenda">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
+        Agenda
+      </button>
+      <button class="tab" data-tab="hist">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+        Histórico
+      </button>
+      <button class="tab" data-tab="duvidas">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>
+        Dúvidas <span class="tab-badge" id="duvidasBadge" style="display:none">0</span>
+      </button>
+    </nav>
+
+    <!-- Menu de abas (só consulta) -->
+    <nav class="tabs" id="tabsCons">
+      <button class="tab active" data-consview="welcome">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/></svg>
+        Início
+      </button>
+      <button class="tab" data-consview="subs">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+        Substabelecidos
+      </button>
+      <button class="tab" data-consview="bancosc">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg>
+        Bancos
+      </button>
+      <button class="tab" id="duvidaBtn">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>
+        Dúvidas
+      </button>
+      <button class="tab" id="minhasBtn">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v12H4z"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+        Minhas dúvidas
+      </button>
+    </nav>
+
+    <aside class="sidebar" id="sidebar" style="display:none">
+      <div class="sidebar-head">Filtros</div>
+      <div id="filtrosWrap">
+        <div class="field">
+          <label>Buscar</label>
+          <input id="fBusca" type="text" placeholder="Empresa, CNPJ, código, responsável…" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Banco</label>
+          <select id="fBanco"><option value="">Todos</option></select>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="fStatus">
+            <option value="ATIVO">Ativo</option>
+            <option value="PENDENTE">Pendente</option>
+            <option value="EM_ANDAMENTO">Em andamento</option>
+            <option value="INATIVO">Inativo</option>
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field" id="fldTipo" style="display:none">
+          <label>Tipo de cadastro</label>
+          <select id="fTipo"><option value="">Todos</option></select>
+        </div>
+        <div class="field" id="fldGerente" style="display:none">
+          <label>Gerente comercial</label>
+          <select id="fGerente"><option value="">Todos</option></select>
+        </div>
+        <button class="btn sm block" id="limparBtn">Limpar filtros</button>
+      </div>
+    </aside>
+  </div><!-- /sidebar-col -->
+
+  <div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Substabelecidos <span>· Prospecta</span></h1>
+    </div>
+    <div class="spacer"></div>
+    <span class="mode-pill" id="modePill">Modo <b>Consulta</b></span>
+    <div class="notif-wrap" id="notifWrap">
+      <button class="btn icon" id="notifBtn" title="Notificações">
+        🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+      </button>
+      <div class="notif-panel" id="notifPanel">
+        <div class="notif-head">
+          Notificações
+          <button class="notif-clear" id="notifClear" title="Limpar histórico">Limpar tudo</button>
+        </div>
+        <div class="notif-list" id="notifList"></div>
+        <div class="notif-empty" id="notifEmpty">Nenhuma notificação</div>
+      </div>
+    </div>
+    <button class="btn" id="reloadBtn" title="Recarregar do Supabase">Atualizar</button>
+    <button class="btn primary" id="gestorBtn">Área do Gestor</button>
+    <button class="btn ghost" id="sairBtn" style="display:none">Sair</button>
+  </header>
+
+  <div class="agenda-alert" id="agendaAlert" style="display:none"></div>
+
+  <main class="content">
+    <!-- Boas-vindas (só consulta, inicial) -->
+    <div id="viewWelcome">
+      <div class="welcome">
+        <h2>Bem-vindo(a) à Prospecta</h2>
+        <p>Selecione uma opção na barra lateral à esquerda para prosseguir: consulte os <b class="welcome-link" id="wlSubs">Substabelecidos</b>, veja os <b class="welcome-link" id="wlBancos">Bancos</b> ou envie uma <b class="welcome-link" id="wlDuvida">Dúvida</b> ao gestor.</p>
+      </div>
+    </div>
+
+    <div id="viewSubs" style="display:none">
+    <!-- Filtros no topo (preenchido via JS) -->
+    <div class="tablecard filtros-top" id="filtrosTop" style="display:none"></div>
+
+    <!-- KPIs (só gestor) -->
+    <section id="kpis" class="kpis" style="display:none"></section>
+
+    <!-- Tabela -->
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="count">—</span>
+        <div class="spacer"></div>
+        <button class="btn primary sm" id="novoBtn" style="display:none">+ Novo substabelecido</button>
+      </div>
+      <div class="tablescroll">
+        <table id="tabelaSubs">
+          <thead>
+            <tr>
+              <th data-sort="nome_subs" class="sortable">Empresa<span class="sort-ic"></span></th><th>CNPJ</th><th data-sort="banco" class="sortable">Banco<span class="sort-ic"></span></th><th data-sort="tipo_cadastro" class="sortable">Tipo<span class="sort-ic"></span></th>
+              <th>Cód. loja</th><th>Cód. sub</th><th>Cód. parceiro</th>
+              <th>Responsável</th><th>Gerente</th><th data-sort="comissao" class="sortable">Comissão<span class="sort-ic"></span></th><th>Status</th>
+              <th id="thAcoes" style="display:none">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState" style="display:none">
+          <b>Nada encontrado</b>Ajuste os filtros ou limpe a busca.
+        </div>
+      </div>
+      <div class="pager">
+        <span class="info" id="pageInfo"></span>
+        <button class="btn sm" id="prevBtn">← Anterior</button>
+        <button class="btn sm" id="nextBtn">Próxima →</button>
+      </div>
+    </div>
+    </div><!-- /viewSubs -->
+
+  <!-- View: Bancos (modo consulta, read-only) -->
+  <div id="viewBancosConsulta" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="bancoscCount">—</span>
+        <div class="spacer"></div>
+        <input id="fBancoConsulta" type="text" placeholder="Pesquisar por nome do banco…" autocomplete="off" style="width:280px;max-width:100%">
+      </div>
+      <div class="tablescroll">
+        <table>
+          <thead>
+            <tr><th>Banco</th><th>Gerente</th><th>Contato</th><th>E-mail</th><th>Suporte (e-mail alt.)</th></tr>
+          </thead>
+          <tbody id="bancoscTbody"></tbody>
+        </table>
+        <div class="empty-state" id="bancoscEmpty" style="display:none">
+          <b>Nenhum banco encontrado</b>Ajuste a busca.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Bancos cadastrados (só gestor) -->
+  <div id="viewBancos" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="bancosCount">—</span>
+        <div class="spacer"></div>
+        <button class="btn primary sm" id="novoBancoBtn">+ Novo banco</button>
+      </div>
+      <div class="tablescroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Banco</th><th>Gerente</th><th>Contato</th><th>E-mail</th><th>Suporte (e-mail alt.)</th><th>Status</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="bancosTbody"></tbody>
+        </table>
+        <div class="empty-state" id="bancosEmpty" style="display:none">
+          <b>Nenhum banco cadastrado</b>Clique em “Novo banco” para começar.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Produção (só gestor) -->
+  <div id="viewProducao" style="display:none">
+    <div class="prod-filtros">
+      <div class="field prod-field-sub">
+        <label>Substabelecido (nome ou código)</label>
+        <input type="text" id="prodBuscaSub" placeholder="ex.: SP12085 ou nome da empresa…" autocomplete="off">
+        <div class="prod-sugestoes" id="prodSugestoes"></div>
+      </div>
+      <div class="field prod-field-banco" id="prodFieldBanco" style="display:none">
+        <label>Banco</label>
+        <select id="prodFiltroBanco"><option value="">Todos os bancos</option></select>
+      </div>
+      <div class="field prod-field-mes" id="prodFieldMes" style="display:none">
+        <label>Mês</label>
+        <select id="prodFiltroMes"><option value="">Todos os meses</option></select>
+      </div>
+      <button class="btn ghost sm" id="prodLimpar" style="display:none">Limpar seleção</button>
+    </div>
+
+    <div id="prodVazio" class="empty-state">
+      <b>Selecione um substabelecido</b>Busque pelo nome da empresa ou pelo código (ex.: SP12085) para ver a produção mensal.
+    </div>
+
+    <div id="prodConteudo" style="display:none">
+      <div class="prod-header">
+        <div>
+          <span class="det-kicker">Produção mensal</span>
+          <h2 id="prodSubNome">—</h2>
+        </div>
+        <span class="mode-pill" id="prodSubCodigo"></span>
+      </div>
+
+      <section class="kpis" id="prodKpis"></section>
+
+      <div class="painel-grid prod-stack">
+        <div class="painel-card">
+          <div class="painel-card-title">Bancos vendidos</div>
+          <div id="prodPorBanco"></div>
+        </div>
+        <div class="painel-card">
+          <div class="painel-card-title">Convênios</div>
+          <div id="prodPorConvenio"></div>
+        </div>
+        <div class="painel-card">
+          <div class="painel-card-title">Formas de contrato</div>
+          <div id="prodPorForma"></div>
+        </div>
+      </div>
+
+      <div class="prod-conv-head">
+        <div class="painel-card-title" style="border:none;padding:0;margin:0">Situação atual por convênio</div>
+        <span class="prod-conv-atualizado" id="prodConvAtualizado"></span>
+      </div>
+      <section class="kpis" id="prodConvKpis"></section>
+      <div class="tablecard prod-tabela">
+        <div class="tablescroll">
+          <table>
+            <thead><tr><th>Banco</th><th>Convênio</th><th>Pendente</th><th>Pago</th><th>Em andamento</th><th>Cancelado</th><th>Líquido</th><th>Bruto</th><th>Base comissão</th></tr></thead>
+            <tbody id="prodConvTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tablecard prod-tabela">
+        <div class="tablebar">
+          <span class="count" id="prodTabCount">—</span>
+        </div>
+        <div class="tablescroll">
+          <table>
+            <thead><tr><th>Mês</th><th>Banco</th><th>Convênio</th><th>Forma de contrato</th><th>Valor produzido</th><th>Contratos</th></tr></thead>
+            <tbody id="prodTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Agenda (só gestor) -->
+  <div id="viewAgenda" style="display:none">
+    <div class="agenda-layout">
+      <div class="tablecard">
+        <div class="tablebar">
+          <button class="btn sm" id="agPrev">← Mês anterior</button>
+          <span class="count" id="agMesLabel" style="min-width:160px;text-align:center">—</span>
+          <button class="btn sm" id="agNext">Próximo mês →</button>
+          <div class="spacer"></div>
+          <button class="btn sm" id="agHoje">Hoje</button>
+          <button class="btn primary sm" id="agNovoBtn">+ Novo compromisso</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+
+      <div class="tablecard agenda-side">
+        <div class="tablebar"><span class="count">Próximos compromissos</span></div>
+        <div class="agenda-list" id="agendaList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Histórico (só gestor) -->
+  <div id="viewHist" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count">Registro de alterações</span>
+        <div class="spacer"></div>
+        <button class="btn sm" id="histReload">Atualizar</button>
+      </div>
+      <div class="tablescroll">
+        <table>
+          <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Descrição</th></tr></thead>
+          <tbody id="histTbody"></tbody>
+        </table>
+        <div class="empty-state" id="histEmpty" style="display:none">
+          <b>Sem registros ainda</b>As alterações aparecerão aqui.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Dúvidas recebidas (só gestor) -->
+  <div id="viewDuvidas" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="duvidasCount">—</span>
+        <div class="spacer"></div>
+        <select id="fDuvidaStatus" style="width:auto">
+          <option value="">Todas</option>
+          <option value="ABERTA">Abertas</option>
+          <option value="RESPONDIDA">Respondidas</option>
+        </select>
+      </div>
+      <div class="duvidas-list" id="duvidasList"></div>
+      <div class="empty-state" id="duvidasEmpty" style="display:none">
+        <b>Nenhuma dúvida por aqui</b>Quando um atendente enviar, aparece nesta lista.
+      </div>
+    </div>
+  </div>
+
+  <!-- View: Painel Sintético (só gestor) -->
+  <div id="viewPainel" style="display:none"></div>
+  </main>
+  </div><!-- /wrap -->
+  </div><!-- /shell -->
+</div><!-- /app -->
+
+<!-- Tela de setup (quando config não preenchida) -->
+<div class="setup" id="setupScreen" style="display:none">
+  <h2>⚙️ Configuração necessária</h2>
+  <p>Antes de usar, edite o bloco <code>CONFIG</code> no topo de <code>app.js</code> e preencha:</p>
+  <ul>
+    <li><code>SUPABASE_URL</code> — URL do seu projeto (ex.: <code>https://abcd.supabase.co</code>)</li>
+    <li><code>SUPABASE_KEY</code> — sua <b>anon key</b> (Settings → API)</li>
+  </ul>
+  <p>A tabela usada é <code>substabelecidos</code>. Salve o arquivo e recarregue.</p>
+</div>
+
+<!-- Modal: login gestor -->
+<div class="overlay" id="loginOverlay">
+  <div class="modal login-modal">
+    <div class="login-hero">
+      <button class="x" data-close>&times;</button>
+      <svg class="login-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2 4 5.5v5.6c0 4.9 3.4 8.6 8 10.4 4.6-1.8 8-5.5 8-10.4V5.5L12 2z"/>
+        <rect x="9" y="10.2" width="6" height="5" />
+        <path d="M10 10.2V8.8a2 2 0 0 1 4 0v1.4"/>
+      </svg>
+      <span class="login-kicker">Acesso restrito</span>
+      <h2>Área do Gestor</h2>
+      <p class="login-sub">Ambiente exclusivo para gestores autorizados da Prospecta. Todas as ações realizadas aqui ficam registradas no histórico do sistema.</p>
+    </div>
+    <div class="modal-body login-body">
+      <div class="field">
+        <label>Login</label>
+        <input id="loginUser" type="text" placeholder="Seu login de gestor" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input id="loginPass" type="password" placeholder="Sua senha" autocomplete="off">
+      </div>
+      <div class="hint" id="loginHint"></div>
+      <p class="login-aviso">Se você é consultor, não é necessário entrar — utilize o modo de consulta na tela principal.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="loginConfirm">Entrar na área do gestor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: form criar/editar -->
+<div class="overlay" id="formOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2 id="formTitle">Novo substabelecido</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Nome do sub <span class="req">*</span></label><input id="f_sub" type="text" placeholder="Qualquer nome"></div>
+        <div class="field"><label>CNPJ do sub <span class="req">*</span></label>
+          <input id="f_cnpj_subs" type="text" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00">
+          <div class="hint" id="cnpjSubHint"></div>
+        </div>
+        <div class="field"><label>Empresa (razão) <span class="req">*</span></label>
+          <select id="f_razao"><option value="">Selecione…</option></select>
+        </div>
+        <div class="field"><label>CNPJ (grupo)</label><input id="f_cnpj" type="text" readonly placeholder="preenchido pela razão"></div>
+        <div class="field"><label>Banco <span class="req">*</span></label><select id="f_banco"><option value="">Selecione…</option></select></div>
+        <div class="field"><label>Tipo de cadastro <span class="req">*</span></label>
+          <select id="f_tipo">
+            <option value="">Selecione…</option>
+            <option>SUBSTABELECIDO</option>
+            <option>SUBZERO</option>
+            <option>INDICADO</option>
+            <option>INDICADO 100%</option>
+            <option>MASTER</option>
+          </select>
+        </div>
+        <div class="field"><label>Cód. loja banco</label><input id="f_codloja" type="text"></div>
+        <div class="field"><label>Cód. substabelecido</label><input id="f_codsub" type="text"></div>
+        <div class="field"><label>Cód. parceiro</label><input id="f_codparc" type="text"></div>
+        <div class="field"><label>Responsável (empresa)</label><input id="f_resp" type="text"></div>
+        <div class="field"><label>Gerente comercial <span class="req">*</span></label><input id="f_gerente" type="text" placeholder="Digite o nome"></div>
+        <div class="field"><label id="lblComissao">Comissão <span class="req" id="comissaoReq" style="display:none">*</span></label><input id="f_comissao" type="text" placeholder="ex.: 90% (repasse ao sub, o restante fica com a empresa)"><div class="hint" id="hintComissao">Texto livre. Ex.: "90%" = o sub recebe 90% do banco, 10% fica com a empresa.</div></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="formSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: criar/editar banco -->
+<div class="overlay" id="bancoOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2 id="bancoTitle">Novo banco</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label>Nome do banco <span class="req">*</span></label><input id="b_nome" type="text"></div>
+        <div class="field"><label>Gerente do banco <span class="req">*</span></label><input id="b_gerente" type="text"></div>
+        <div class="field"><label>Contato do gerente <span class="req">*</span></label>
+          <input id="b_contato" type="text" inputmode="numeric" maxlength="16" placeholder="(00) 00000-0000">
+          <div class="hint" id="b_contato_h"></div>
+        </div>
+        <div class="field"><label>E-mail do gerente <span class="req">*</span></label>
+          <input id="b_email" type="email" placeholder="nome@banco.com">
+          <div class="hint" id="b_email_h"></div>
+        </div>
+        <div class="field"><label>Suporte (e-mail alternativo)</label>
+          <input id="b_suporte" type="email" placeholder="outra.pessoa@banco.com">
+          <div class="hint" id="b_suporte_h"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="bancoSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: passo a passo (por banco) -->
+<div class="overlay" id="passoOverlay">
+  <div class="modal passo-modal">
+    <div class="modal-head"><h2 id="passoTitle">Passo a passo</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body passo-body">
+      <div class="field">
+        <label>Anotações / passo a passo</label>
+        <textarea id="passoTexto" rows="14" placeholder="Escreva o passo a passo deste banco…"></textarea>
+      </div>
+      <aside class="passo-anexos">
+        <div class="pa-title">Arquivos anexados</div>
+        <div class="pa-list" id="passoArqList"><div class="dl-empty">Carregando…</div></div>
+        <div class="pa-add">
+          <input type="file" id="passoArqFile" hidden>
+          <button class="btn sm block" id="passoArqPick">Escolher arquivo…</button>
+          <div class="pa-file-nome" id="passoArqNome"></div>
+          <div class="field">
+            <label>Título do anexo</label>
+            <input type="text" id="passoArqTitulo" placeholder="ex.: Checklist de credenciamento" maxlength="120">
+          </div>
+          <button class="btn primary sm block" id="passoArqAdd">Anexar arquivo</button>
+        </div>
+      </aside>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="passoSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: observações (chat, por sub) -->
+<div class="overlay" id="obsOverlay">
+  <div class="modal obs-modal">
+    <div class="modal-head"><h2 id="obsTitle">Observações</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body obs-modal-body">
+      <div class="obs-col">
+        <div id="obsBlocks" class="obs-blocks"></div>
+        <div class="obs-input">
+          <textarea id="obsInput" rows="2" placeholder="Escreva e Enter para enviar (Shift+Enter = nova linha)"></textarea>
+          <button class="btn primary" id="obsEnviar">Enviar</button>
+        </div>
+      </div>
+      <aside class="passo-anexos" id="obsAnexosCol">
+        <div class="pa-title">Documentos do sub</div>
+        <div class="pa-list" id="obsArqList"><div class="dl-empty">Carregando…</div></div>
+        <div class="pa-add">
+          <input type="file" id="obsArqFile" hidden>
+          <button class="btn sm block" id="obsArqPick">Escolher arquivo…</button>
+          <div class="pa-file-nome" id="obsArqNome"></div>
+          <div class="field">
+            <label>Título do documento</label>
+            <input type="text" id="obsArqTitulo" placeholder="ex.: Contrato social, RG, comprovante…" maxlength="120">
+          </div>
+          <button class="btn primary sm block" id="obsArqAdd">Anexar documento</button>
+        </div>
+      </aside>
+      <div class="obs-anexos-aviso" id="obsAnexosAviso">
+        Salve o cadastro primeiro para poder anexar documentos deste sub.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="obsFechar" data-close>Fechar</button>
+      <button class="btn primary" id="obsConcluir" style="display:none">Concluir cadastro</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: novo/editar compromisso -->
+<div class="overlay" id="agendaOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2 id="agendaTitle">Novo compromisso</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label>Título <span class="req">*</span></label><input id="ag_titulo" type="text" placeholder="ex.: Treinamento sistema novo"></div>
+        <div class="field"><label>Tipo <span class="req">*</span></label>
+          <select id="ag_tipo">
+            <option value="">Selecione…</option>
+            <option value="TREINAMENTO">Treinamento</option>
+            <option value="REUNIAO">Reunião</option>
+            <option value="NOVO_CADASTRO">Novo cadastro</option>
+            <option value="OUTRO">Outro</option>
+          </select>
+        </div>
+        <div class="field"><label>Data <span class="req">*</span></label><input id="ag_data" type="date"></div>
+        <div class="field"><label>Hora</label><input id="ag_hora" type="time"></div>
+        <div class="field"><label>Alertar com quantos dias de antecedência</label>
+          <select id="ag_alerta">
+            <option value="0">No dia</option>
+            <option value="1" selected>1 dia antes</option>
+            <option value="2">2 dias antes</option>
+            <option value="3">3 dias antes</option>
+            <option value="5">5 dias antes</option>
+            <option value="7">7 dias antes</option>
+          </select>
+        </div>
+        <div class="field"><label>Vínculo</label>
+          <select id="ag_vinculo_tipo">
+            <option value="">—</option>
+            <option value="BANCO">Banco</option>
+            <option value="PARCEIRO">Parceiro</option>
+          </select>
+        </div>
+        <div class="field"><label>Nome do banco/parceiro</label><input id="ag_vinculo_nome" list="agVinculoList" type="text" placeholder="ex.: C6 Bank"><datalist id="agVinculoList"></datalist></div>
+        <div class="field"><label>Com quem</label><input id="ag_com_quem" type="text" placeholder="Quem vai / responsável"></div>
+        <div class="field"><label>Link</label><input id="ag_link" type="url" placeholder="https://…"></div>
+        <div class="field full"><label>Observações</label><textarea id="ag_obs" rows="3" placeholder="Detalhes do compromisso…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn danger" id="agendaExcluir" style="display:none">Excluir</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="agendaSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: responder dúvida -->
+<div class="overlay" id="respOverlay">
+  <div class="modal sm">
+    <div class="modal-head"><h2>Responder dúvida</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label id="respPergunta" style="text-transform:none;font-size:14px;font-weight:400;color:var(--txt)"></label></div>
+      <div class="field">
+        <label>Resposta</label>
+        <textarea id="respTexto" rows="4" placeholder="Escreva a resposta…"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="respSalvar">Responder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: minhas dúvidas (consultor) -->
+<div class="overlay" id="minhasOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2>Minhas dúvidas</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div id="minhasList" class="duvidas-list"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: enviar dúvida ao gestor (consulta) -->
+<div class="overlay" id="duvidaOverlay">
+  <div class="modal sm">
+    <div class="modal-head"><h2>Dúvida no cadastro?</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <p class="duvida-desc" style="margin:0 0 14px">Envie direto pro gestor. Ele responde por aqui mesmo.</p>
+      <div class="field">
+        <label>Seu nome</label>
+        <input id="duvidaNome" type="text" placeholder="Seu nome" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Dúvida</label>
+        <textarea id="duvidaMsg" rows="4" placeholder="Descreva a dúvida…"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="duvidaSend">Enviar ao gestor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: ficha do substabelecido -->
+<div class="overlay" id="subOverlay">
+  <div class="modal det-modal sub-modal">
+    <div class="modal-head det-head">
+      <div>
+        <span class="det-kicker">Ficha do substabelecido</span>
+        <h2 id="subTitle">—</h2>
+      </div>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body" id="subBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Fechar</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="subPdfBtn">&#8681; Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: detalhe do painel sintético -->
+<div class="overlay" id="detalheOverlay">
+  <div class="modal det-modal">
+    <div class="modal-head det-head">
+      <div>
+        <span class="det-kicker" id="detalheKicker">Detalhe</span>
+        <h2 id="detalheTitle">—</h2>
+      </div>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body" id="detalheBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Fechar</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="detalhePdfBtn">&#8681; Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
