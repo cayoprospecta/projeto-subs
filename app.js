@@ -13,15 +13,9 @@ const CONFIG = {
   TABLE_MENSAGENS:"mensagem",
   TABLE_PRODUCAO:"producao_mensal",
   TABLE_PRODUCAO_CONVENIO:"producao_convenio",
+  AUTH_EMAIL_DOMAIN:"prospecta.local", // login "michelle" vira michelle@prospecta.local
 
-  // Gestoras (SHA-256). Padrões: michelle@prospecta / grazi@prospecta
-  // Trocar: no console rode  await hashSenha('novaSenha')  e cole o hash.
-  GESTORES: {
-    "Michelle": "156039fca54bb24a604b2cae23237d075adbeb46db37eaa9bf9539f2f0782a14",
-    "Grazi":    "ccaba70ad62f8497a2817ae4f580016fe846e50301d8ae6c0fb58898c399541d"
-  },
-
-  PAGE_SIZE: 25
+  PAGE_SIZE: 45
 };
 
 /* ============================================================
@@ -35,6 +29,7 @@ const state = {
   page: 1,
   gestor: false,
   gestorNome: null,
+  session: null,     // {access_token, refresh_token, expires_at} — Supabase Auth
   editingId: null,
   editingBancoId: null,
   editingPassoId: null,
@@ -56,7 +51,7 @@ const state = {
 
 const H = () => ({
   apikey: CONFIG.SUPABASE_KEY,
-  Authorization: "Bearer " + CONFIG.SUPABASE_KEY,
+  Authorization: "Bearer " + (state.session && state.session.access_token ? state.session.access_token : CONFIG.SUPABASE_KEY),
   "Content-Type": "application/json"
 });
 const REST = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE}`;
@@ -102,24 +97,114 @@ function ufDoSub(r){
   return m && UF_REGIAO[m[1]] ? m[1] : null;
 }
 
-async function hashSenha(txt){
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-window.hashSenha = hashSenha; // disponível no console
+/* ============================================================
+   AUTENTICAÇÃO (Supabase Auth de verdade — sem SDK, via fetch)
+   O "login" no navegador vira uma sessão JWT real, validada pelo
+   Supabase; H() usa esse token nas chamadas, e as políticas RLS
+   exigem "authenticated" para qualquer escrita.
+============================================================ */
+const AUTH_URL = () => `${CONFIG.SUPABASE_URL}/auth/v1`;
+const SESSION_KEY = "prospecta_session";
 
-/* login via RPC (senha validada no servidor, bcrypt) — retorna nome ou null */
-async function loginGestor(login, senha){
+function loginParaEmail(login){
+  login = login.trim();
+  return login.includes("@") ? login : `${login}@${CONFIG.AUTH_EMAIL_DOMAIN}`;
+}
+
+function salvarSessao(session){
+  state.session = session;
+  try{ sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); }catch(e){}
+  agendarRefreshSessao();
+}
+function limparSessao(){
+  state.session = null;
+  try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){}
+  if(state._refreshTimer) clearTimeout(state._refreshTimer);
+}
+
+/* login (email+senha) — retorna {nome} em sucesso, ou null em falha */
+async function authLogin(login, senha){
   try{
-    const res = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/rpc/login_gestor`, {
+    const res = await fetch(`${AUTH_URL()}/token?grant_type=password`, {
       method:"POST",
-      headers:{ ...H(), "Content-Type":"application/json" },
-      body: JSON.stringify({ p_login: login, p_senha: senha })
+      headers:{ apikey: CONFIG.SUPABASE_KEY, "Content-Type":"application/json" },
+      body: JSON.stringify({ email: loginParaEmail(login), password: senha })
     });
-    if(!res.ok) throw new Error("HTTP "+res.status+" — "+await res.text());
-    const nome = await res.json();      // texto ou null
-    return nome || null;
-  }catch(e){ console.error("loginGestor:", e); return null; }
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error_description || data.msg || `HTTP ${res.status}`);
+
+    salvarSessao({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Date.now() + (data.expires_in||3600)*1000
+    });
+    const nome = (data.user && data.user.user_metadata && data.user.user_metadata.nome)
+      || (data.user && data.user.email && data.user.email.split("@")[0]) || "Gestor(a)";
+    return { nome };
+  }catch(e){ console.error("authLogin:", e); return null; }
+}
+
+async function authRefresh(){
+  if(!state.session || !state.session.refresh_token) return false;
+  try{
+    const res = await fetch(`${AUTH_URL()}/token?grant_type=refresh_token`, {
+      method:"POST",
+      headers:{ apikey: CONFIG.SUPABASE_KEY, "Content-Type":"application/json" },
+      body: JSON.stringify({ refresh_token: state.session.refresh_token })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error_description || `HTTP ${res.status}`);
+    salvarSessao({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Date.now() + (data.expires_in||3600)*1000
+    });
+    return true;
+  }catch(e){
+    console.error("authRefresh:", e);
+    limparSessao();
+    if(state.gestor){ toast("Sua sessão expirou. Faça login novamente.","err"); sairGestor(); }
+    return false;
+  }
+}
+
+function agendarRefreshSessao(){
+  if(state._refreshTimer) clearTimeout(state._refreshTimer);
+  if(!state.session) return;
+  const ms = Math.max(state.session.expires_at - Date.now() - 60000, 5000); // renova 1min antes de expirar
+  state._refreshTimer = setTimeout(authRefresh, ms);
+}
+
+async function authLogout(){
+  if(state.session && state.session.access_token){
+    try{
+      await fetch(`${AUTH_URL()}/logout`, {
+        method:"POST",
+        headers:{ apikey: CONFIG.SUPABASE_KEY, Authorization:"Bearer "+state.session.access_token }
+      });
+    }catch(e){ console.error("authLogout:", e); }
+  }
+  limparSessao();
+}
+
+/* tenta retomar a sessão salva (F5 não desloga o gestor) */
+async function restaurarSessao(){
+  let saved=null;
+  try{ saved = JSON.parse(sessionStorage.getItem(SESSION_KEY)||"null"); }catch(e){}
+  if(!saved) return null;
+  state.session = saved;
+  if(saved.expires_at - Date.now() < 60000){
+    const ok = await authRefresh();
+    if(!ok) return null;
+  }else{
+    agendarRefreshSessao();
+  }
+  try{
+    const res = await fetch(`${AUTH_URL()}/user`, { headers:{ apikey: CONFIG.SUPABASE_KEY, Authorization:"Bearer "+state.session.access_token } });
+    if(!res.ok) throw new Error("sessão inválida");
+    const user = await res.json();
+    return { nome: (user.user_metadata&&user.user_metadata.nome) || (user.email||"").split("@")[0] || "Gestor(a)" };
+  }catch(e){ limparSessao(); return null; }
 }
 
 function toast(msg, kind){
@@ -1303,17 +1388,13 @@ function renderDuvidas(){
 
 async function excluirDuvida(id){
   const d=state.duvidas.find(x=>x.id===id); if(!d) return;
-  const senha = prompt("Para apagar esta dúvida, digite sua senha de gestor:");
-  if(senha===null) return;                 // cancelou
-  const h = await hashSenha(senha||"");
-  const ok = Object.values(CONFIG.GESTORES).includes(h);
-  if(!ok){ toast("Senha incorreta. Exclusão cancelada.","err"); return; }
+  if(!confirm("Apagar esta dúvida?")) return;
   try{
     const res=await fetch(`${REST_MSG()}?id=eq.${id}`,{method:"DELETE",headers:{...H(),Prefer:"return=representation"}});
     if(!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
     const del = await res.json();
     if(!Array.isArray(del) || !del.length){
-      toast("Nada foi apagado. Falta a policy de DELETE para 'anon' no Supabase.","err");
+      toast("Nada foi apagado. Falta a policy de DELETE para 'authenticated' no Supabase.","err");
       return;
     }
     state.duvidas = state.duvidas.filter(x=>x.id!==id);
@@ -1461,6 +1542,7 @@ function entrarGestor(){
   toast(`Bem-vinda, ${escapeHtml(state.gestorNome||"")}`,"ok");
 }
 function sairGestor(){
+  authLogout();
   state.gestor=false;
   state.gestorNome=null;
   $("modePill").innerHTML='Modo <b>Consulta</b>';
@@ -2542,8 +2624,8 @@ function bind(){
     const login=$("loginUser").value.trim(), senha=$("loginPass").value;
     if(!login||!senha){ $("loginHint").innerHTML='<span class="warn">Preencha login e senha.</span>'; return; }
     $("loginHint").textContent="Verificando…";
-    const nome=await loginGestor(login,senha);
-    if(nome){ state.gestorNome=nome; $("loginOverlay").classList.remove("show"); entrarGestor(); }
+    const resultado=await authLogin(login,senha);
+    if(resultado){ state.gestorNome=resultado.nome; $("loginOverlay").classList.remove("show"); entrarGestor(); }
     else $("loginHint").innerHTML='<span class="warn">Login ou senha incorretos.</span>';
   };
   $("loginPass").addEventListener("keydown",e=>{if(e.key==="Enter")$("loginConfirm").click();});
@@ -2714,4 +2796,8 @@ async function initTicker(){
   renderNotifPanel();
   verificarRespostas();
   setInterval(verificarRespostas, 20000);
+
+  restaurarSessao().then(resultado=>{
+    if(resultado){ state.gestorNome=resultado.nome; entrarGestor(); }
+  });
 })();
