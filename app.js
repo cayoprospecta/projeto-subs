@@ -1713,7 +1713,7 @@ function entrarGestor() {
   aplicarFiltros();
   checarAlertas();
   carregarDuvidas();
-  toast(`Bem-vinda, ${escapeHtml(state.gestorNome || "")}`, "ok");
+  toast(`Bem-vindo(a), ${escapeHtml(state.gestorNome || "")}`, "ok");
 }
 
 function sairGestor() {
