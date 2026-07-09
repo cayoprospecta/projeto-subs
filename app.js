@@ -1694,7 +1694,7 @@ function limparHistoricoNotif() {
 
 function entrarGestor() {
   state.gestor = true;
-  $("modePill").innerHTML = `Gestora <b>${escapeHtml(state.gestorNome || "")}</b>`;
+  $("modePill").innerHTML = `Gestor(a) <b>${escapeHtml(state.gestorNome || "")}</b>`;
   $("gestorBtn").style.display = "none";
   $("sairBtn").style.display = "";
   $("novoBtn").style.display = "";
