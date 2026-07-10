@@ -247,6 +247,13 @@ header.top .notif-wrap .btn{
 .tablebar input{padding:10px 12px;border:1px solid var(--line2);background:#fff;font-size:14px}
 .tablebar input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(26,86,196,.12);outline:none}
 .tablescroll{overflow:auto;max-height:76vh}
+@media(max-width:1440px){
+  .wrap{padding:20px 24px 60px}
+  table{font-size:13.5px}
+  thead th{padding:11px 14px}
+  tbody td{padding:13px 14px}
+  td.empresa{min-width:200px;max-width:300px}
+}
 table{width:100%;border-collapse:collapse;font-size:14.5px;white-space:nowrap}
 thead th{
   position:sticky;top:0;z-index:50;
@@ -368,7 +375,8 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
   padding-bottom:8px;margin-bottom:2px;border-bottom:2px solid var(--side-bg);
 }
 .det-list{max-height:52vh;overflow:auto}
-.det-item{padding:13px 2px;border-bottom:1px solid var(--line)}
+.det-item{padding:13px 2px;border-bottom:1px solid var(--line);cursor:pointer;transition:background-color .12s}
+.det-item:hover{background-color:var(--col-alt)}
 .det-item:last-child{border-bottom:none}
 .det-item:hover{background:var(--panel2)}
 .det-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -558,6 +566,7 @@ tr[data-rowid]{cursor:pointer}
 }
 
 .overlay{position:fixed;inset:0;background:rgba(15,31,56,.42);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+#subOverlay{z-index:150}
 .overlay.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line2);border-top:3px solid var(--cyan);box-shadow:var(--shadow);width:100%;max-width:880px;max-height:90vh;overflow-y:auto;overflow-x:hidden}
 .modal.sm{max-width:420px}

@@ -34,6 +34,10 @@
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
         Substabelecidos
       </button>
+      <button class="tab" data-tab="pendentes">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.5 2"/></svg>
+        Pendentes / Andamento
+      </button>
       <button class="tab" data-tab="bancos">
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg>
         Bancos cadastrados
@@ -168,7 +172,7 @@
             <tr>
               <th data-sort="nome_subs" class="sortable">Empresa<span class="sort-ic"></span></th><th>CNPJ</th><th data-sort="banco" class="sortable">Banco<span class="sort-ic"></span></th><th data-sort="tipo_cadastro" class="sortable">Tipo<span class="sort-ic"></span></th>
               <th>Cód. loja</th><th>Cód. sub</th><th>Cód. parceiro</th>
-              <th>Responsável</th><th>Gerente</th><th data-sort="comissao" class="sortable">Comissão<span class="sort-ic"></span></th><th>Status</th>
+              <th>Status</th>
               <th id="thAcoes" style="display:none">Ações</th>
             </tr>
           </thead>
@@ -185,6 +189,32 @@
       </div>
     </div>
     </div>
+
+  <div id="viewPendentes" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="countPendentes">—</span>
+        <div class="spacer"></div>
+        <input id="fBuscaPendentes" type="text" placeholder="Empresa, CNPJ, código, responsável…" autocomplete="off" style="width:280px;max-width:100%">
+      </div>
+      <div class="tablescroll">
+        <table id="tabelaPendentes">
+          <thead>
+            <tr>
+              <th>Empresa</th><th>CNPJ</th><th>Banco</th><th>Tipo</th>
+              <th>Cód. loja</th><th>Cód. sub</th><th>Cód. parceiro</th>
+              <th>Status</th>
+              <th id="thAcoesPendentes" style="display:none">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyPendentes"></tbody>
+        </table>
+        <div class="empty-state" id="emptyPendentes" style="display:none">
+          <b>Nada por aqui</b>Nenhum substabelecido pendente ou em andamento no momento.
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="viewBancosConsulta" style="display:none">
     <div class="tablecard">
@@ -212,13 +242,18 @@
       <div class="tablebar">
         <span class="count" id="bancosCount">—</span>
         <div class="spacer"></div>
+        <select id="fBancoStatus" style="max-width:160px">
+          <option value="">Todos os status</option>
+          <option value="ATIVO" selected>Ativo</option>
+          <option value="INATIVO">Inativo</option>
+        </select>
         <button class="btn primary sm" id="novoBancoBtn">+ Novo banco</button>
       </div>
       <div class="tablescroll">
         <table>
           <thead>
             <tr>
-              <th>Banco</th><th>Gerente</th><th>Contato</th><th>E-mail</th><th>Suporte (e-mail alt.)</th><th>Status</th><th>Ações</th>
+              <th>Banco</th><th>Gerente</th><th>Contato</th><th>E-mail</th><th>Status</th><th>Ações</th>
             </tr>
           </thead>
           <tbody id="bancosTbody"></tbody>
@@ -398,6 +433,33 @@
     <div class="modal-foot">
       <button class="btn ghost" data-close>Cancelar</button>
       <button class="btn primary" id="loginConfirm">Entrar na área do gestor</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="acessoOverlay">
+  <div class="modal login-modal">
+    <div class="login-hero">
+      <button class="x" data-close>&times;</button>
+      <svg class="login-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2 4 5.5v5.6c0 4.9 3.4 8.6 8 10.4 4.6-1.8 8-5.5 8-10.4V5.5L12 2z"/>
+        <rect x="9" y="10.2" width="6" height="5" />
+        <path d="M10 10.2V8.8a2 2 0 0 1 4 0v1.4"/>
+      </svg>
+      <span class="login-kicker">Acesso restrito</span>
+      <h2>Entrar como consultor</h2>
+      <p class="login-sub">Digite a senha de acesso pra liberar a consulta de substabelecidos e bancos.</p>
+    </div>
+    <form class="modal-body login-body" id="acessoForm" onsubmit="return false">
+      <div class="field">
+        <label>Senha</label>
+        <input id="acessoSenha" type="password" placeholder="Senha de acesso" autocomplete="current-password">
+      </div>
+      <div class="hint" id="acessoErro"></div>
+    </form>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <button class="btn primary" id="acessoEntrar">Entrar</button>
     </div>
   </div>
 </div>
