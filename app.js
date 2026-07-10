@@ -3493,7 +3493,7 @@ async function initTicker() {
 }
 
 (function init() {
-  const cfgOk = CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.includes("SEU-PROJETO") && CONFIG.SUPABASE_KEY && !CONFIG.SUPABASE_KEY.includes("SUA_ANON_KEY");
+  const cfgOk = CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.includes("SEU-PROJETO");
   if (!cfgOk) {
     $("setupScreen").style.display = "block";
     return;
