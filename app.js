@@ -1,6 +1,6 @@
 const CONFIG = {
-  SUPABASE_URL: "https://chyiakakkugjmlfuzqmf.supabase.co",
-  SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoeWlha2Fra3Vnam1sZnV6cW1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5NjgwNTIsImV4cCI6MjA5ODU0NDA1Mn0.mHEMc_92U3rU7rJrepOkFjE1ThtDa7w3qUnexs_ITaA",
+  SUPABASE_URL: "https://prospecta-proxy.cayonauta.workers.dev",
+  SUPABASE_KEY: "",
   TABLE: "substabelecidos",
   COL_CNPJ_GRUPO: "cnpj_empresa",
   TABLE_EMPRESAS: "empresas_grupo",
@@ -12,10 +12,18 @@ const CONFIG = {
   TABLE_PRODUCAO: "producao_mensal",
   TABLE_PRODUCAO_CONVENIO: "producao_convenio",
   AUTH_EMAIL_DOMAIN: "prospecta.local",
+  CONSULTOR_EMAIL: "consultor@prospecta.local",
   PAGE_SIZE: 25
 };
 
 const state = {
+  acessoLiberado: false,
+  acaoPendente: null,
+  sessions: {
+    gestor: null,
+    consultor: null
+  },
+  _refreshTimers: {},
   rows: [],
   empresas: [],
   bancos: [],
@@ -46,7 +54,7 @@ const state = {
 
 const H = () => ({
   apikey: CONFIG.SUPABASE_KEY,
-  Authorization: "Bearer " + (state.session && state.session.access_token ? state.session.access_token : CONFIG.SUPABASE_KEY),
+  Authorization: "Bearer " + ((state.sessions.gestor && state.sessions.gestor.access_token) || (state.sessions.consultor && state.sessions.consultor.access_token) || CONFIG.SUPABASE_KEY),
   "Content-Type": "application/json"
 });
 
@@ -162,30 +170,33 @@ function ufDoSub(r) {
 
 const AUTH_URL = () => `${CONFIG.SUPABASE_URL}/auth/v1`;
 
-const SESSION_KEY = "prospecta_session";
+const SESSION_KEYS = {
+  gestor: "prospecta_session",
+  consultor: "prospecta_session_consultor"
+};
 
 function loginParaEmail(login) {
   login = login.trim();
   return login.includes("@") ? login : `${login}@${CONFIG.AUTH_EMAIL_DOMAIN}`;
 }
 
-function salvarSessao(session) {
-  state.session = session;
+function salvarSessao(slot, session) {
+  state.sessions[slot] = session;
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.setItem(SESSION_KEYS[slot], JSON.stringify(session));
   } catch (e) {}
-  agendarRefreshSessao();
+  agendarRefreshSessao(slot);
 }
 
-function limparSessao() {
-  state.session = null;
+function limparSessao(slot) {
+  state.sessions[slot] = null;
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEYS[slot]);
   } catch (e) {}
-  if (state._refreshTimer) clearTimeout(state._refreshTimer);
+  if (state._refreshTimers[slot]) clearTimeout(state._refreshTimers[slot]);
 }
 
-async function authLogin(login, senha) {
+async function authLogin(slot, login, senha) {
   try {
     const res = await fetch(`${AUTH_URL()}/token?grant_type=password`, {
       method: "POST",
@@ -200,7 +211,7 @@ async function authLogin(login, senha) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || data.msg || `HTTP ${res.status}`);
-    salvarSessao({
+    salvarSessao(slot, {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       expires_at: Date.now() + (data.expires_in || 3600) * 1e3
@@ -215,8 +226,9 @@ async function authLogin(login, senha) {
   }
 }
 
-async function authRefresh() {
-  if (!state.session || !state.session.refresh_token) return false;
+async function authRefresh(slot) {
+  const sess = state.sessions[slot];
+  if (!sess || !sess.refresh_token) return false;
   try {
     const res = await fetch(`${AUTH_URL()}/token?grant_type=refresh_token`, {
       method: "POST",
@@ -225,70 +237,73 @@ async function authRefresh() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        refresh_token: state.session.refresh_token
+        refresh_token: sess.refresh_token
       })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || `HTTP ${res.status}`);
-    salvarSessao({
+    salvarSessao(slot, {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       expires_at: Date.now() + (data.expires_in || 3600) * 1e3
     });
     return true;
   } catch (e) {
-    console.error("authRefresh:", e);
-    limparSessao();
-    if (state.gestor) {
+    console.error("authRefresh:", slot, e);
+    limparSessao(slot);
+    if (slot === "gestor" && state.gestor) {
       toast("Sua sessão expirou. Faça login novamente.", "err");
       sairGestor();
     }
+    if (slot === "consultor") state.acessoLiberado = false;
     return false;
   }
 }
 
-function agendarRefreshSessao() {
-  if (state._refreshTimer) clearTimeout(state._refreshTimer);
-  if (!state.session) return;
-  const ms = Math.max(state.session.expires_at - Date.now() - 6e4, 5e3);
-  state._refreshTimer = setTimeout(authRefresh, ms);
+function agendarRefreshSessao(slot) {
+  if (state._refreshTimers[slot]) clearTimeout(state._refreshTimers[slot]);
+  const sess = state.sessions[slot];
+  if (!sess) return;
+  const ms = Math.max(sess.expires_at - Date.now() - 6e4, 5e3);
+  state._refreshTimers[slot] = setTimeout(() => authRefresh(slot), ms);
 }
 
-async function authLogout() {
-  if (state.session && state.session.access_token) {
+async function authLogout(slot) {
+  const sess = state.sessions[slot];
+  if (sess && sess.access_token) {
     try {
       await fetch(`${AUTH_URL()}/logout`, {
         method: "POST",
         headers: {
           apikey: CONFIG.SUPABASE_KEY,
-          Authorization: "Bearer " + state.session.access_token
+          Authorization: "Bearer " + sess.access_token
         }
       });
     } catch (e) {
       console.error("authLogout:", e);
     }
   }
-  limparSessao();
+  limparSessao(slot);
 }
 
-async function restaurarSessao() {
+async function restaurarSessao(slot) {
   let saved = null;
   try {
-    saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    saved = JSON.parse(sessionStorage.getItem(SESSION_KEYS[slot]) || "null");
   } catch (e) {}
   if (!saved) return null;
-  state.session = saved;
+  state.sessions[slot] = saved;
   if (saved.expires_at - Date.now() < 6e4) {
-    const ok = await authRefresh();
+    const ok = await authRefresh(slot);
     if (!ok) return null;
   } else {
-    agendarRefreshSessao();
+    agendarRefreshSessao(slot);
   }
   try {
     const res = await fetch(`${AUTH_URL()}/user`, {
       headers: {
         apikey: CONFIG.SUPABASE_KEY,
-        Authorization: "Bearer " + state.session.access_token
+        Authorization: "Bearer " + state.sessions[slot].access_token
       }
     });
     if (!res.ok) throw new Error("sessão inválida");
@@ -297,7 +312,7 @@ async function restaurarSessao() {
       nome: user.user_metadata && user.user_metadata.nome || (user.email || "").split("@")[0] || "Gestor(a)"
     };
   } catch (e) {
-    limparSessao();
+    limparSessao(slot);
     return null;
   }
 }
@@ -428,9 +443,10 @@ function aplicarFiltros() {
   ordenarFiltrados();
   state.page = 1;
   renderTabela();
+  renderPendentes();
 }
 
-const SORT_COLS = [ "nome_subs", "banco", "tipo_cadastro", "comissao" ];
+const SORT_COLS = [ "nome_subs", "banco", "tipo_cadastro" ];
 
 function ordenarFiltrados() {
   const col = state.sortCol;
@@ -473,6 +489,15 @@ function ordenarPorColuna(col) {
   atualizarSetasCabecalho();
 }
 
+function linhaSubTr(r) {
+  const stU = norm(r.status).toUpperCase();
+  const badge = badgeStatus(stU);
+  const acoes = state.gestor ? `<td><div class="rowact">\n        <button class="btn sm" data-edit="${r.id}">Editar</button>\n        <div class="status-menu-wrap">\n          <button class="btn sm" data-statusmenu="${r.id}">Alterar status</button>\n        </div>\n      </div></td>` : "";
+  const nome = escapeHtml(norm(r.nome_subs) || "—");
+  const nomeCell = state.gestor ? `<td class="empresa"><span class="linklike" data-obs="${r.id}" title="Observações">${nome}</span>${temObs(r) ? ' <span class="obs-dot" title="tem observação">●</span>' : ""}</td>` : `<td class="empresa">${nome}</td>`;
+  return `<tr data-rowid="${r.id}" title="Ver ficha completa">\n      ${nomeCell}\n      <td class="mono">${escapeHtml(norm(r.cnpj_subs) || "—")}</td>\n      <td>${escapeHtml(norm(r.banco) || "—")}</td>\n      <td>${escapeHtml(norm(r.tipo_cadastro) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_loja_banco) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_substabelecido) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_parceiro) || "—")}</td>\n      <td>${badge}</td>\n      ${acoes}\n    </tr>`;
+}
+
 function renderTabela() {
   const {filtered: filtered, page: page} = state, size = CONFIG.PAGE_SIZE;
   const total = filtered.length, pages = Math.max(1, Math.ceil(total / size));
@@ -488,17 +513,26 @@ function renderTabela() {
     es.style.display = total ? "none" : "block";
   }
   const tb = $("tbody");
-  tb.innerHTML = slice.map(r => {
-    const stU = norm(r.status).toUpperCase();
-    const badge = badgeStatus(stU);
-    const acoes = state.gestor ? `<td><div class="rowact">\n        <button class="btn sm" data-edit="${r.id}">Editar</button>\n        <div class="status-menu-wrap">\n          <button class="btn sm" data-statusmenu="${r.id}">Alterar status</button>\n        </div>\n      </div></td>` : "";
-    const nome = escapeHtml(norm(r.nome_subs) || "—");
-    const nomeCell = state.gestor ? `<td class="empresa"><span class="linklike" data-obs="${r.id}" title="Observações">${nome}</span>${temObs(r) ? ' <span class="obs-dot" title="tem observação">●</span>' : ""}</td>` : `<td class="empresa">${nome}</td>`;
-    return `<tr data-rowid="${r.id}" title="Ver ficha completa">\n      ${nomeCell}\n      <td class="mono">${escapeHtml(norm(r.cnpj_subs) || "—")}</td>\n      <td>${escapeHtml(norm(r.banco) || "—")}</td>\n      <td>${escapeHtml(norm(r.tipo_cadastro) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_loja_banco) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_substabelecido) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_parceiro) || "—")}</td>\n      <td>${escapeHtml(norm(r.responsavel_empresa) || "—")}</td>\n      <td>${escapeHtml(norm(r.gerente_comercial) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.comissao) || "—")}</td>\n      <td>${badge}</td>\n      ${acoes}\n    </tr>`;
-  }).join("");
+  tb.innerHTML = slice.map(linhaSubTr).join("");
   $("pageInfo").textContent = total ? `Página ${state.page} de ${pages} · exibindo ${slice.length}` : "";
   $("prevBtn").disabled = state.page <= 1;
   $("nextBtn").disabled = state.page >= pages;
+}
+
+function renderPendentes() {
+  const q = lower($("fBuscaPendentes").value);
+  $("thAcoesPendentes").style.display = state.gestor ? "" : "none";
+  let list = state.rows.filter(isReal).filter(r => [ "PENDENTE", "EM_ANDAMENTO" ].includes(norm(r.status).toUpperCase()));
+  if (q) {
+    list = list.filter(r => {
+      const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
+      return blob.includes(q);
+    });
+  }
+  list = [ ...list ].sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
+  $("countPendentes").innerHTML = `<b>${list.length}</b> registro${list.length !== 1 ? "s" : ""}`;
+  $("tbodyPendentes").innerHTML = list.map(linhaSubTr).join("");
+  $("emptyPendentes").style.display = list.length ? "none" : "block";
 }
 
 const PALETTE = [ "#2563eb", "#0f9d6b", "#7c3aed", "#e5484d", "#b7791f", "#0891b2", "#db2777", "#65a30d", "#f59e0b", "#64748b" ];
@@ -627,7 +661,7 @@ function abrirDetalhePainel(tipo, valor) {
     const ativos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
     $("detalheKicker").textContent = "Banco";
     $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else if (tipo === "uf") {
     const subs = valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === valor);
     const porBanco = {};
@@ -651,7 +685,7 @@ function abrirDetalhePainel(tipo, valor) {
     const maxUF = entriesUF.length ? entriesUF[0][1] : 1;
     $("detalheKicker").textContent = "Região";
     $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else return;
   $("detalheOverlay").classList.add("show");
 }
@@ -1711,6 +1745,7 @@ function limparHistoricoNotif() {
 
 function entrarGestor() {
   state.gestor = true;
+  carregar();
   $("modePill").innerHTML = `Gestor(a) <b>${escapeHtml(state.gestorNome || "")}</b>`;
   $("gestorBtn").style.display = "none";
   $("sairBtn").style.display = "";
@@ -1734,7 +1769,7 @@ function entrarGestor() {
 }
 
 function sairGestor() {
-  authLogout();
+  authLogout("gestor");
   state.gestor = false;
   state.gestorNome = null;
   $("modePill").innerHTML = "Modo <b>Consulta</b>";
@@ -1839,13 +1874,14 @@ function abrirBancoInfo(id) {
 }
 
 function renderBancos() {
-  const tb = $("bancosTbody"), list = state.bancos;
+  const fst = $("fBancoStatus").value;
+  const tb = $("bancosTbody"), list = state.bancos.filter(b => !fst || (norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO") === fst);
   $("bancosCount").innerHTML = `<b>${list.length}</b> banco${list.length !== 1 ? "s" : ""}`;
   $("bancosEmpty").style.display = list.length ? "none" : "block";
   tb.innerHTML = list.map(b => {
     const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
     const badge = st === "ATIVO" ? `<span class="badge ativo">ATIVO</span>` : `<span class="badge inativo">INATIVO</span>`;
-    return `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
+    return `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
   }).join("");
 }
 
@@ -3036,9 +3072,53 @@ function limparProducao() {
   $("prodConteudo").style.display = "none";
 }
 
+function exigirAcesso(fn) {
+  return (...args) => {
+    if (state.gestor || state.acessoLiberado) {
+      fn(...args);
+      return;
+    }
+    state.acaoPendente = () => fn(...args);
+    $("acessoSenha").value = "";
+    $("acessoErro").textContent = "";
+    $("acessoErro").className = "hint";
+    $("acessoOverlay").classList.add("show");
+    setTimeout(() => $("acessoSenha").focus(), 50);
+  };
+}
+
+async function verificarAcesso() {
+  const senha = $("acessoSenha").value;
+  if (!senha) {
+    $("acessoErro").textContent = "Digite a senha.";
+    $("acessoErro").className = "hint warn";
+    return;
+  }
+  const btn = $("acessoEntrar");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = "Verificando…";
+  const resultado = await authLogin("consultor", CONFIG.CONSULTOR_EMAIL, senha);
+  btn.disabled = false;
+  btn.textContent = orig;
+  if (resultado) {
+    state.acessoLiberado = true;
+    $("acessoOverlay").classList.remove("show");
+    await carregar();
+    const acao = state.acaoPendente;
+    state.acaoPendente = null;
+    if (acao) acao();
+  } else {
+    $("acessoErro").textContent = "Senha incorreta.";
+    $("acessoErro").className = "hint warn";
+    $("acessoSenha").focus();
+  }
+}
+
 function switchTab(t) {
   $("viewWelcome").style.display = t === "welcome" ? "" : "none";
   $("viewSubs").style.display = t === "subs" ? "" : "none";
+  $("viewPendentes").style.display = t === "pendentes" ? "" : "none";
   $("viewBancosConsulta").style.display = t === "bancosc" ? "" : "none";
   $("viewBancos").style.display = t === "bancos" ? "" : "none";
   $("viewProducao").style.display = t === "producao" ? "" : "none";
@@ -3048,6 +3128,7 @@ function switchTab(t) {
   $("viewPainel").style.display = t === "painel" ? "" : "none";
   document.querySelectorAll("#tabs .tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
   document.querySelectorAll("#tabsCons .tab").forEach(b => b.classList.toggle("active", b.dataset.consview === t));
+  if (t === "pendentes") renderPendentes();
   if (t === "bancosc") renderBancosConsulta();
   if (t === "bancos") renderBancos();
   if (t === "producao") initProducao();
@@ -3058,6 +3139,7 @@ function switchTab(t) {
   const vid = {
     welcome: "viewWelcome",
     subs: "viewSubs",
+    pendentes: "viewPendentes",
     bancosc: "viewBancosConsulta",
     bancos: "viewBancos",
     producao: "viewProducao",
@@ -3109,6 +3191,7 @@ function bindForm() {
   });
   $("f_tipo").addEventListener("change", atualizarObrigatoriedadeComissao);
   $("novoBancoBtn").onclick = () => abrirBanco(null);
+  $("fBancoStatus").addEventListener("change", renderBancos);
   $("bancoSave").onclick = salvarBanco;
   $("b_contato").addEventListener("input", e => {
     e.target.value = mascaraTel(e.target.value);
@@ -3206,7 +3289,7 @@ function bind() {
       return;
     }
     $("loginHint").textContent = "Verificando…";
-    const resultado = await authLogin(login, senha);
+    const resultado = await authLogin("gestor", login, senha);
     if (resultado) {
       state.gestorNome = resultado.nome;
       $("loginOverlay").classList.remove("show");
@@ -3248,20 +3331,27 @@ function bind() {
   });
   $("duvidaSend").onclick = enviarDuvida;
   $("minhasBtn").onclick = abrirMinhas;
-  $("duvidaBtn").onclick = () => {
+  $("duvidaBtn").onclick = exigirAcesso(() => {
     $("duvidaOverlay").classList.add("show");
     $("duvidaNome").focus();
-  };
+  });
+  $("minhasBtn").onclick = exigirAcesso(abrirMinhas);
   $("tabsCons").addEventListener("click", e => {
     const b = e.target.closest("[data-consview]");
-    if (b) switchTab(b.dataset.consview);
+    if (!b) return;
+    const t = b.dataset.consview;
+    if (t === "welcome") switchTab(t); else exigirAcesso(() => switchTab(t))();
   });
-  $("wlSubs").onclick = () => switchTab("subs");
-  $("wlBancos").onclick = () => switchTab("bancosc");
-  $("wlDuvida").onclick = () => {
+  $("wlSubs").onclick = exigirAcesso(() => switchTab("subs"));
+  $("wlBancos").onclick = exigirAcesso(() => switchTab("bancosc"));
+  $("wlDuvida").onclick = exigirAcesso(() => {
     $("duvidaOverlay").classList.add("show");
     $("duvidaNome").focus();
-  };
+  });
+  $("acessoEntrar").onclick = verificarAcesso;
+  $("acessoSenha").addEventListener("keydown", e => {
+    if (e.key === "Enter") verificarAcesso();
+  });
   $("fBancoConsulta").addEventListener("input", renderBancosConsulta);
   $("duvidaMsg").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -3290,10 +3380,25 @@ function bind() {
       if (tr) abrirFichaSub(+tr.dataset.rowid);
     }
   });
+  $("tbodyPendentes").addEventListener("click", e => {
+    const ob = e.target.closest("[data-obs]");
+    const ed = e.target.closest("[data-edit]"), sm = e.target.closest("[data-statusmenu]");
+    if (ob) {
+      abrirObs("edit", +ob.dataset.obs);
+    } else if (ed) abrirForm(+ed.dataset.edit); else if (sm) abrirMenuStatus(sm, +sm.dataset.statusmenu); else if (!e.target.closest("a,button")) {
+      const tr = e.target.closest("tr[data-rowid]");
+      if (tr) abrirFichaSub(+tr.dataset.rowid);
+    }
+  });
+  $("fBuscaPendentes").addEventListener("input", renderPendentes);
   document.querySelectorAll("#tabelaSubs thead th.sortable").forEach(th => {
     th.onclick = () => ordenarPorColuna(th.dataset.sort);
   });
   $("subPdfBtn").onclick = exportarFichaSubPDF;
+  $("detalheBody").addEventListener("click", e => {
+    const item = e.target.closest("[data-rowid]");
+    if (item) abrirFichaSub(+item.dataset.rowid);
+  });
   document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest(".overlay").classList.remove("show"));
   document.addEventListener("click", e => {
     if (!e.target.closest(".prod-field-sub")) {
@@ -3408,10 +3513,16 @@ async function initTicker() {
   renderNotifPanel();
   verificarRespostas();
   setInterval(verificarRespostas, 2e4);
-  restaurarSessao().then(resultado => {
+  restaurarSessao("gestor").then(resultado => {
     if (resultado) {
       state.gestorNome = resultado.nome;
       entrarGestor();
+    }
+  });
+  restaurarSessao("consultor").then(resultado => {
+    if (resultado) {
+      state.acessoLiberado = true;
+      carregar();
     }
   });
 })();
