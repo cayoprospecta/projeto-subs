@@ -413,13 +413,7 @@ function preencherBancosForm() {
 
 function aplicarFiltros() {
   const q = lower($("fBusca").value), banco = $("fBanco").value, st = $("fStatus").value, tipo = $("fTipo").value, ger = $("fGerente").value;
-  state.aguardandoBanco = !state.gestor && !banco;
-  if (state.aguardandoBanco) {
-    state.filtered = [];
-    state.page = 1;
-    renderTabela();
-    return;
-  }
+  state.aguardandoBanco = false;
   state.filtered = state.rows.filter(isReal).filter(r => {
     if (banco && norm(r.banco) !== banco) return false;
     if (st && norm(r.status).toUpperCase() !== st) return false;
@@ -487,7 +481,7 @@ function renderTabela() {
   $("count").innerHTML = state.aguardandoBanco ? "—" : `<b>${total}</b> registro${total !== 1 ? "s" : ""}`;
   const es = $("emptyState");
   if (state.aguardandoBanco) {
-    es.innerHTML = "<b>Selecione um banco</b>Escolha um banco no filtro ao lado para exibir a lista de substabelecidos.";
+    es.innerHTML = "<b>Selecione um banco ou busque um nome</b>Escolha um banco no filtro ao lado, ou digite algo no campo de busca, pra exibir a lista de substabelecidos.";
     es.style.display = "block";
   } else {
     es.innerHTML = "<b>Nada encontrado</b>Ajuste os filtros ou limpe a busca.";
