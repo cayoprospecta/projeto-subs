@@ -264,6 +264,8 @@ tbody tr{transition:.12s}
 tbody tr:nth-child(even){background:#f9fbfe}
 tbody tr:hover{background:#eef4fc}
 td.empresa{white-space:normal;min-width:260px;max-width:380px;font-weight:600}
+.banco-nome-link{cursor:pointer;color:var(--cyan);text-decoration:none}
+.banco-nome-link:hover{color:var(--cyan-dim);text-decoration:underline}
 td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
 
 .badge{display:inline-block;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:.08em;border:1px solid}
@@ -566,6 +568,7 @@ tr[data-rowid]{cursor:pointer}
 .modal-body{padding:22px 24px}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}
 .form-grid .full{grid-column:1/-1}
+.form-grid .sep-top{padding-top:14px;margin-top:2px;border-top:1px solid var(--line)}
 .modal-foot{display:flex;gap:11px;justify-content:flex-end;padding:18px 24px;border-top:1px solid var(--line);background:var(--panel2)}
 .hint{font-size:13px;color:var(--muted);margin-top:3px}
 .hint.warn,.hint .warn{color:var(--inativo);font-weight:600}

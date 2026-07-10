@@ -5,6 +5,7 @@ const CONFIG = {
   COL_CNPJ_GRUPO: "cnpj_empresa",
   TABLE_EMPRESAS: "empresas_grupo",
   TABLE_BANCOS: "bancos",
+  TABLE_BANCO_VINCULOS: "banco_vinculos",
   TABLE_HIST: "historico",
   TABLE_AGENDA: "agenda",
   TABLE_MENSAGENS: "mensagem",
@@ -18,6 +19,7 @@ const state = {
   rows: [],
   empresas: [],
   bancos: [],
+  bancoVinculos: [],
   filtered: [],
   page: 1,
   gestor: false,
@@ -53,6 +55,7 @@ const REST = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE}`;
 const REST_EMP = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_EMPRESAS}`;
 
 const REST_BANCOS = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_BANCOS}`;
+const REST_BANCO_VINCULOS = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_BANCO_VINCULOS}`;
 
 const REST_HIST = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_HIST}`;
 
@@ -310,13 +313,15 @@ function toast(msg, kind) {
 async function carregar() {
   $("count").textContent = "carregando…";
   try {
-    const [resSubs, resEmp, resBancos, resAgenda] = await Promise.all([ fetch(`${REST()}?select=*&order=id.asc`, {
+    const [resSubs, resEmp, resBancos, resAgenda, resBancoVinc] = await Promise.all([ fetch(`${REST()}?select=*&order=id.asc`, {
       headers: H()
-    }), fetch(`${REST_EMP()}?select=razao_social,fantasia,cnpj&order=razao_social.asc`, {
+    }), fetch(`${REST_EMP()}?select=id,razao_social,fantasia,cnpj&order=razao_social.asc`, {
       headers: H()
     }), fetch(`${REST_BANCOS()}?select=*&order=nome_banco.asc`, {
       headers: H()
     }), fetch(`${REST_AGENDA()}?select=*&order=data.asc,hora.asc`, {
+      headers: H()
+    }), fetch(`${REST_BANCO_VINCULOS()}?select=id,banco_id,empresa_grupo_id,codigo_corban,tipo_sub,status&status=eq.ATIVO`, {
       headers: H()
     }) ]);
     if (!resSubs.ok) throw new Error(`subs HTTP ${resSubs.status} — ${await resSubs.text()}`);
@@ -339,6 +344,11 @@ async function carregar() {
     } else {
       console.warn("agenda:", resAgenda.status, await resAgenda.text());
     }
+    if (resBancoVinc.ok) {
+      state.bancoVinculos = await resBancoVinc.json();
+    } else {
+      console.warn("banco_vinculos:", resBancoVinc.status, await resBancoVinc.text());
+    }
     montarFiltros();
     aplicarFiltros();
     if (!state.gestor && $("viewBancosConsulta").style.display !== "none") renderBancosConsulta();
@@ -356,6 +366,19 @@ function montarEmpresasSelect() {
   const opts = state.empresas.filter(e => norm(e.razao_social)).map(e => {
     const label = norm(e.fantasia) ? `${escapeHtml(e.razao_social)} — ${escapeHtml(e.fantasia)}` : escapeHtml(e.razao_social);
     return `<option value="${escapeHtml(norm(e.razao_social))}" data-cnpj="${escapeHtml(norm(e.cnpj))}">${label}</option>`;
+  }).join("");
+  sel.innerHTML = `<option value="">Selecione…</option>` + opts;
+  if (atual) sel.value = atual;
+  montarEmpresaBancoSelect();
+}
+
+function montarEmpresaBancoSelect() {
+  const sel = $("b_empresa");
+  if (!sel) return;
+  const atual = sel.value;
+  const opts = state.empresas.filter(e => norm(e.razao_social)).map(e => {
+    const label = norm(e.fantasia) ? `${escapeHtml(e.razao_social)} — ${escapeHtml(e.fantasia)}` : escapeHtml(e.razao_social);
+    return `<option value="${e.id}" data-cnpj="${escapeHtml(norm(e.cnpj))}">${label}</option>`;
   }).join("");
   sel.innerHTML = `<option value="">Selecione…</option>` + opts;
   if (atual) sel.value = atual;
@@ -1805,6 +1828,22 @@ function linkWhats(tel) {
   return `<a class="tel-whats" href="https://wa.me/${full}" target="_blank" rel="noopener" title="Conversar no WhatsApp">${escapeHtml(t)}</a>`;
 }
 
+function vinculoAtivoDoBanco(bancoId) {
+  return state.bancoVinculos.find(v => v.banco_id === bancoId) || null;
+}
+
+function abrirBancoInfo(id) {
+  const b = state.bancos.find(x => x.id === id);
+  if (!b) return;
+  const v = vinculoAtivoDoBanco(id);
+  const emp = v ? state.empresas.find(e => e.id === v.empresa_grupo_id) || null : null;
+  const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
+  $("bancoInfoTitle").textContent = norm(b.nome_banco) || "Banco";
+  const grid = pares => `<div class="sub-grid">\n    ${pares.map(([lab, val]) => `<div class="sub-field">\n      <span class="sf-label">${escapeHtml(lab)}</span>\n      <span class="sf-val${/CNPJ|Cód\./.test(lab) ? " mono" : ""}">${escapeHtml(val || "—")}</span>\n    </div>`).join("")}\n  </div>`;
+  $("bancoInfoBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${st === "ATIVO" ? "ok" : "off"}">${st}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.codigo_corban) || "—")}</b><span>cód. corban</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.tipo_sub) || "—")}</b><span>tipo</span></div>\n    </div>\n\n    <div class="det-sec">Empresa credenciada</div>\n    ${grid([ [ "Razão social", emp ? norm(emp.razao_social) : "" ], [ "Nome fantasia", emp ? norm(emp.fantasia) : "" ], [ "CNPJ", emp ? norm(emp.cnpj) : "" ] ])}\n\n    <div class="det-sec">Contato do banco</div>\n    ${grid([ [ "Gerente", norm(b.gerente_banco) ], [ "Contato", norm(b.contato_gerente) ], [ "E-mail", norm(b.email_gerente) ], [ "Suporte", norm(b.suporte_banco) ] ])}\n\n    ${!emp ? '<div class="dl-empty">Nenhum vínculo ativo cadastrado pra este banco em <b>banco_vinculos</b>.</div>' : ""}\n  `;
+  $("bancoInfoOverlay").classList.add("show");
+}
+
 function renderBancos() {
   const tb = $("bancosTbody"), list = state.bancos;
   $("bancosCount").innerHTML = `<b>${list.length}</b> banco${list.length !== 1 ? "s" : ""}`;
@@ -1812,7 +1851,7 @@ function renderBancos() {
   tb.innerHTML = list.map(b => {
     const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
     const badge = st === "ATIVO" ? `<span class="badge ativo">ATIVO</span>` : `<span class="badge inativo">INATIVO</span>`;
-    return `<tr>\n    <td class="empresa">${escapeHtml(norm(b.nome_banco) || "—")}</td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
+    return `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
   }).join("");
 }
 
@@ -1821,7 +1860,7 @@ function renderBancosConsulta() {
   const list = state.bancos.filter(b => norm(b.status).toUpperCase() !== "INATIVO").filter(b => !q || lower(b.nome_banco).includes(q));
   $("bancoscCount").innerHTML = `<b>${list.length}</b> banco${list.length !== 1 ? "s" : ""}`;
   $("bancoscEmpty").style.display = list.length ? "none" : "block";
-  $("bancoscTbody").innerHTML = list.map(b => `<tr>\n    <td class="empresa">${escapeHtml(norm(b.nome_banco) || "—")}</td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n  </tr>`).join("");
+  $("bancoscTbody").innerHTML = list.map(b => `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n  </tr>`).join("");
 }
 
 async function mudarStatusBanco(id, novo) {
@@ -1852,12 +1891,19 @@ async function mudarStatusBanco(id, novo) {
 function abrirBanco(id) {
   state.editingBancoId = id || null;
   const b = id ? state.bancos.find(x => x.id === id) : {};
+  const v = id ? vinculoAtivoDoBanco(id) : null;
   $("bancoTitle").textContent = id ? "Editar banco" : "Novo banco";
   $("b_nome").value = norm(b.nome_banco);
   $("b_gerente").value = norm(b.gerente_banco);
   $("b_contato").value = mascaraTel(b.contato_gerente);
   $("b_email").value = norm(b.email_gerente);
   $("b_suporte").value = norm(b.suporte_banco);
+  montarEmpresaBancoSelect();
+  $("b_empresa").value = v ? v.empresa_grupo_id : "";
+  const optSel = $("b_empresa").selectedOptions[0];
+  $("b_cnpj").value = optSel ? optSel.dataset.cnpj || "" : "";
+  $("b_codigo_corban").value = norm(v && v.codigo_corban);
+  $("b_tipo_sub").value = norm(v && v.tipo_sub);
   [ "b_contato_h", "b_email_h", "b_suporte_h" ].forEach(h => {
     $(h).textContent = "";
     $(h).className = "hint";
@@ -1878,6 +1924,50 @@ function validarBancoUI() {
   tel ? set("b_contato_h", validaTelefone(tel), validaTelefone(tel) ? "Número válido" : "Número inválido") : clear("b_contato_h");
   em ? set("b_email_h", validaEmail(em), validaEmail(em) ? "E-mail válido" : "E-mail inválido") : clear("b_email_h");
   sup ? set("b_suporte_h", validaEmail(sup), validaEmail(sup) ? "E-mail válido" : "E-mail inválido") : clear("b_suporte_h");
+}
+
+async function salvarVinculoBanco(bancoId) {
+  const empresaId = $("b_empresa").value;
+  const codigo = $("b_codigo_corban").value.trim();
+  const tipo = $("b_tipo_sub").value.trim();
+  if (!empresaId) return; // nada selecionado, não mexe no vínculo existente
+  const body = {
+    banco_id: bancoId,
+    empresa_grupo_id: +empresaId,
+    codigo_corban: codigo || null,
+    tipo_sub: tipo || null,
+    status: "ATIVO"
+  };
+  const existente = vinculoAtivoDoBanco(bancoId);
+  try {
+    let res;
+    if (existente) {
+      res = await fetch(`${REST_BANCO_VINCULOS()}?id=eq.${existente.id}`, {
+        method: "PATCH",
+        headers: {
+          ...H(),
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify(body)
+      });
+    } else {
+      res = await fetch(REST_BANCO_VINCULOS(), {
+        method: "POST",
+        headers: {
+          ...H(),
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify([ body ])
+      });
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const savedVinc = (await res.json())[0];
+    const i = state.bancoVinculos.findIndex(v => v.banco_id === bancoId);
+    if (i > -1) state.bancoVinculos[i] = savedVinc; else state.bancoVinculos.push(savedVinc);
+  } catch (e) {
+    console.error(e);
+    toast("Banco salvo, mas o vínculo (CNPJ/cód. corban) não foi salvo.", "err");
+  }
 }
 
 async function salvarBanco() {
@@ -1943,6 +2033,7 @@ async function salvarBanco() {
       if (i > -1) state.bancos[i] = saved;
     } else state.bancos.push(saved);
     state.bancos.sort((a, b) => norm(a.nome_banco).localeCompare(norm(b.nome_banco), "pt-BR"));
+    await salvarVinculoBanco(saved.id);
     $("bancoOverlay").classList.remove("show");
     renderBancos();
     if (state.editingBancoId) logHist("editou_banco", "bancos", saved.id, `Editou banco ${norm(saved.nome_banco)}`); else logHist("criou_banco", "bancos", saved.id, `Criou banco ${norm(saved.nome_banco)}`);
@@ -3014,6 +3105,10 @@ function bindForm() {
     const opt = e.target.selectedOptions[0];
     $("f_cnpj").value = opt ? opt.dataset.cnpj || "" : "";
   });
+  $("b_empresa").addEventListener("change", e => {
+    const opt = e.target.selectedOptions[0];
+    $("b_cnpj").value = opt ? opt.dataset.cnpj || "" : "";
+  });
   $("f_cnpj_subs").addEventListener("input", e => {
     e.target.value = mascaraCNPJ(e.target.value);
     validarCnpjSubUI();
@@ -3032,9 +3127,14 @@ function bindForm() {
     const ps = e.target.closest("[data-passo]");
     const ina = e.target.closest("[data-inativabanco]");
     const at = e.target.closest("[data-ativabanco]");
+    const bi = e.target.closest("[data-bancoinfo]");
     if (ed) abrirBanco(+ed.dataset.editbanco); else if (ps) abrirPasso(+ps.dataset.passo); else if (ina) {
       if (confirm("Inativar este banco?")) mudarStatusBanco(+ina.dataset.inativabanco, "INATIVO");
-    } else if (at) mudarStatusBanco(+at.dataset.ativabanco, "ATIVO");
+    } else if (at) mudarStatusBanco(+at.dataset.ativabanco, "ATIVO"); else if (bi) abrirBancoInfo(+bi.dataset.bancoinfo);
+  });
+  $("bancoscTbody").addEventListener("click", e => {
+    const bi = e.target.closest("[data-bancoinfo]");
+    if (bi) abrirBancoInfo(+bi.dataset.bancoinfo);
   });
   $("passoSave").onclick = salvarPasso;
   $("passoArqPick").onclick = () => $("passoArqFile").click();

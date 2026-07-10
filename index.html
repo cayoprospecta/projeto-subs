@@ -461,6 +461,12 @@
           <input id="b_suporte" type="email" placeholder="outra.pessoa@banco.com">
           <div class="hint" id="b_suporte_h"></div>
         </div>
+        <div class="field full sep-top"><label>Empresa credenciada (CNPJ usado neste banco)</label>
+          <select id="b_empresa"><option value="">Selecione…</option></select>
+        </div>
+        <div class="field"><label>CNPJ</label><input id="b_cnpj" type="text" class="mono" readonly placeholder="—"></div>
+        <div class="field"><label>Cód. corban</label><input id="b_codigo_corban" type="text" placeholder="ex.: 48830"></div>
+        <div class="field"><label>Tipo de vínculo</label><input id="b_tipo_sub" type="text" placeholder="ex.: MASTER, 100%…"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -496,6 +502,22 @@
     <div class="modal-foot">
       <button class="btn ghost" data-close>Cancelar</button>
       <button class="btn primary" id="passoSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="bancoInfoOverlay">
+  <div class="modal det-modal sub-modal">
+    <div class="modal-head det-head">
+      <div>
+        <span class="det-kicker">Informações do banco</span>
+        <h2 id="bancoInfoTitle">—</h2>
+      </div>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body" id="bancoInfoBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Fechar</button>
     </div>
   </div>
 </div>
