@@ -30,6 +30,7 @@ const state = {
   bancoVinculos: [],
   filtered: [],
   page: 1,
+  filtrosVisiveis: false,
   gestor: false,
   gestorNome: null,
   session: null,
@@ -166,6 +167,75 @@ const UF_REGIAO = {
 function ufDoSub(r) {
   const m = norm(r.cod_substabelecido).toUpperCase().match(/^([A-Z]{2})/);
   return m && UF_REGIAO[m[1]] ? m[1] : null;
+}
+
+const NOME_UF = {
+  AC: "Acre",
+  AL: "Alagoas",
+  AM: "Amazonas",
+  AP: "Amapá",
+  BA: "Bahia",
+  CE: "Ceará",
+  DF: "Distrito Federal",
+  ES: "Espírito Santo",
+  GO: "Goiás",
+  MA: "Maranhão",
+  MG: "Minas Gerais",
+  MS: "Mato Grosso do Sul",
+  MT: "Mato Grosso",
+  PA: "Pará",
+  PB: "Paraíba",
+  PE: "Pernambuco",
+  PI: "Piauí",
+  PR: "Paraná",
+  RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte",
+  RO: "Rondônia",
+  RR: "Roraima",
+  RS: "Rio Grande do Sul",
+  SC: "Santa Catarina",
+  SE: "Sergipe",
+  SP: "São Paulo",
+  TO: "Tocantins"
+};
+
+let brasilSvgCache = null;
+
+async function carregarSvgBrasil() {
+  if (brasilSvgCache) return brasilSvgCache;
+  const res = await fetch("brasil-mapa.svg");
+  brasilSvgCache = await res.text();
+  return brasilSvgCache;
+}
+
+async function montarMapaBrasil(porUF) {
+  const cont = $("mapaBrasil");
+  if (!cont) return;
+  let svgTxt;
+  try {
+    svgTxt = await carregarSvgBrasil();
+  } catch (e) {
+    console.error("mapa brasil:", e);
+    cont.innerHTML = '<div class="dl-empty">Não foi possível carregar o mapa.</div>';
+    return;
+  }
+  if ($("mapaBrasil") !== cont) return;
+  cont.innerHTML = svgTxt;
+  const svgEl = cont.querySelector("svg");
+  if (!svgEl) return;
+  const maxVal = Math.max(0, ...Object.keys(NOME_UF).map(uf => porUF[uf] || 0));
+  Object.keys(NOME_UF).forEach(uf => {
+    const el = svgEl.querySelector("#" + uf);
+    if (!el) return;
+    const n = porUF[uf] || 0;
+    const lvl = n === 0 || maxVal === 0 ? 0 : Math.min(5, Math.ceil(n / maxVal * 5));
+    el.classList.add("uf-shape", "lvl-" + lvl);
+    el.setAttribute("data-det-tipo", "uf");
+    el.setAttribute("data-det-valor", uf);
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = `${NOME_UF[uf]} (${uf}) — ${n} sub${n === 1 ? "" : "s"}`;
+    el.appendChild(title);
+  });
 }
 
 const AUTH_URL = () => `${CONFIG.SUPABASE_URL}/auth/v1`;
@@ -413,7 +483,9 @@ function montarFiltros() {
   const bancosCadastrados = [ ...new Set(state.bancos.map(b => norm(b.nome_banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   fill("fBanco", bancosCadastrados);
   fill("fTipo", distintos("tipo_cadastro"));
-  fill("fGerente", distintos("gerente_comercial"));
+  fill("fSuper", distintos("superintendente"));
+  fill("fSupervisor", distintos("supervisor"));
+  fill("fGerente", distintos("gerente"));
   preencherBancosForm();
 }
 
@@ -426,14 +498,23 @@ function preencherBancosForm() {
   if (atual && nomes.includes(atual)) sel.value = atual;
 }
 
+function aplicarToggleFiltros() {
+  const oculto = !state.filtrosVisiveis;
+  $("filtrosTop").classList.toggle("force-hide", oculto);
+  $("kpis").classList.toggle("force-hide", oculto);
+  $("toggleFiltrosBtn").textContent = oculto ? "Mostrar filtros" : "Esconder filtros";
+}
+
 function aplicarFiltros() {
-  const q = lower($("fBusca").value), banco = $("fBanco").value, st = $("fStatus").value, tipo = $("fTipo").value, ger = $("fGerente").value;
+  const q = lower($("fBusca").value), banco = $("fBanco").value, st = $("fStatus").value, tipo = $("fTipo").value, sup = $("fSuper").value, supv = $("fSupervisor").value, ger = $("fGerente").value;
   state.aguardandoBanco = false;
   state.filtered = state.rows.filter(isReal).filter(r => {
     if (banco && norm(r.banco) !== banco) return false;
     if (st && norm(r.status).toUpperCase() !== st) return false;
     if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
-    if (ger && norm(r.gerente_comercial) !== ger) return false;
+    if (sup && norm(r.superintendente) !== sup) return false;
+    if (supv && norm(r.supervisor) !== supv) return false;
+    if (ger && norm(r.gerente) !== ger) return false;
     if (q) {
       const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
       if (!blob.includes(q)) return false;
@@ -561,7 +642,46 @@ function buildDonutCard(titulo, obj, opts) {
     const det = opts.det ? ` data-det-tipo="${opts.det}" data-det-valor="${escapeHtml(label)}"` : "";
     return `<div class="dl-item${opts.det ? " dl-click" : ""}"${det} title="${opts.det ? `Clique para ver detalhes de ${escapeHtml(label)}` : ""}">\n      <span class="dl-dot" style="background:${PALETTE[i % PALETTE.length]}"></span>\n      <span class="dl-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><b>${n}</b>\n    </div>`;
   }).join("");
-  return `<div class="painel-card${opts.wide ? " wide" : ""}">\n    <div class="painel-card-title">${titulo}</div>\n    <div class="donut-wrap${opts.wide ? " wide" : ""}">\n      <div class="donut${opts.wide ? " lg" : ""} reveal" style="background:conic-gradient(${stops || "var(--line) 0 100%"})">\n        <div class="donut-hole"><b>${total}</b><span>total</span></div>\n      </div>\n      <div class="donut-legend${opts.wide ? " wide" : ""}">${legend || '<div class="dl-empty">Sem dados</div>'}</div>\n    </div>\n  </div>`;
+  const inner = `<div class="painel-card-title">${titulo}</div>\n    <div class="donut-wrap${opts.wide ? " wide" : ""}">\n      <div class="donut${opts.wide ? " lg" : ""} reveal" style="background:conic-gradient(${stops || "var(--line) 0 100%"})">\n        <div class="donut-hole"><b>${total}</b><span>total</span></div>\n      </div>\n      <div class="donut-legend${opts.wide ? " wide" : ""}">${legend || '<div class="dl-empty">Sem dados</div>'}</div>\n    </div>`;
+  if (opts.bare) return inner;
+  return `<div class="painel-card${opts.wide ? " wide" : ""}">\n    ${inner}\n  </div>`;
+}
+
+const REGIOES_ORDEM = [ "Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul" ];
+
+function buildRadarCard(titulo, obj, opts) {
+  opts = opts || {};
+  const eixos = REGIOES_ORDEM.map(reg => [ reg, obj[reg] || 0 ]);
+  const total = eixos.reduce((s, [, n]) => s + n, 0);
+  const max = Math.max(1, ...eixos.map(([, n]) => n));
+  const W = 300, H = 260, cx = W / 2, cy = H / 2 + 6, R = 84;
+  const ponto = (i, escala) => {
+    const ang = -Math.PI / 2 + i * 2 * Math.PI / eixos.length;
+    return [ cx + Math.cos(ang) * R * escala, cy + Math.sin(ang) * R * escala ];
+  };
+  const aneis = [ .25, .5, .75, 1 ].map(f => {
+    const pts = eixos.map((_, i) => ponto(i, f).map(v => v.toFixed(1)).join(",")).join(" ");
+    return `<polygon class="rd-grid" points="${pts}"></polygon>`;
+  }).join("");
+  const raios = eixos.map((_, i) => {
+    const [ x, y ] = ponto(i, 1);
+    return `<line class="rd-axis" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"></line>`;
+  }).join("");
+  const areaPts = eixos.map(([, n], i) => ponto(i, n / max).map(v => v.toFixed(1)).join(",")).join(" ");
+  const marcas = eixos.map(([reg, n], i) => {
+    const [ x, y ] = ponto(i, n / max);
+    const det = opts.det ? ` data-det-tipo="${opts.det}" data-det-valor="${escapeHtml(reg)}"` : "";
+    return `<circle class="rd-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"${det}><title>${escapeHtml(reg)} — ${n} sub${n === 1 ? "" : "s"}</title></circle>`;
+  }).join("");
+  const rotulos = eixos.map(([reg, n], i) => {
+    const [ x, y ] = ponto(i, 1.2);
+    const anchor = Math.abs(x - cx) < 6 ? "middle" : x > cx ? "start" : "end";
+    const det = opts.det ? ` data-det-tipo="${opts.det}" data-det-valor="${escapeHtml(reg)}"` : "";
+    return `<text class="rd-lab${opts.det ? " rd-click" : ""}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle"${det}>${escapeHtml(reg)} <tspan class="rd-num">${n}</tspan></text>`;
+  }).join("");
+  const inner = `<div class="painel-card-title">${titulo}</div>\n    <div class="radar-wrap">\n      <svg class="radar" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(titulo)}">\n        ${aneis}\n        ${raios}\n        <polygon class="rd-area" points="${areaPts}"></polygon>\n        ${marcas}\n        ${rotulos}\n      </svg>\n      <div class="radar-total"><b>${total}</b><span>total de subs</span></div>\n    </div>`;
+  if (opts.bare) return inner;
+  return `<div class="painel-card${opts.wide ? " wide" : ""}">\n    ${inner}\n  </div>`;
 }
 
 function buildTowerCard(titulo, obj, opts) {
@@ -625,10 +745,10 @@ function renderPainel() {
     } else porUF["Não identificado"] = (porUF["Não identificado"] || 0) + 1;
   });
   const kpi = (label, val, key, colorClass) => `<div class="kpi kpi-click ${filtro === key ? "active" : ""}" data-filtro="${key}">\n    <div class="k-label">${label}</div><div class="k-val ${colorClass || ""}">${val}</div>\n  </div>`;
-  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan")}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompatíveis", incompativeis.length, "INCOMPATIVEL")}\n    </section>\n    <div class="painel-grid">\n      ${buildDonutCard("Por região (UF do Cód. sub)", porRegiao, {
+  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan")}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompatíveis", incompativeis.length, "INCOMPATIVEL")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
     det: "regiao",
-    wide: true
-  })}\n      ${buildTowerCard("Por banco", porBanco, {
+    bare: true
+  })}\n          </div>\n        </div>\n      </div>\n      ${buildTowerCard("Por banco", porBanco, {
     limite: 10,
     det: "banco"
   })}\n      ${buildTowerCard("Por UF", porUF, {
@@ -636,6 +756,7 @@ function renderPainel() {
     limite: 14,
     det: "uf"
   })}\n    </div>`;
+  montarMapaBrasil(porUF);
 }
 
 function painelBase() {
@@ -647,6 +768,25 @@ function painelBase() {
   if (f === "EM_ANDAMENTO") return reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
   if (f === "INCOMPATIVEL") return reais.filter(r => !norm(r.gerente_comercial) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
   return reais;
+}
+
+function renderDetalheUf(valor) {
+  const base = painelBase();
+  const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
+  const subs = valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === valor);
+  const porBanco = {};
+  subs.forEach(r => {
+    const b = norm(r.banco) || "Sem banco";
+    porBanco[b] = (porBanco[b] || 0) + 1;
+  });
+  const entries = Object.entries(porBanco).sort((a, b) => b[1] - a[1]);
+  const max = entries.length ? entries[0][1] : 1;
+  const view = state.ufDetalheView || "bancos";
+  $("detalheKicker").textContent = "Unidade federativa";
+  $("detalheTitle").textContent = valor === "Não identificado" ? "UF não identificada" : valor + (UF_REGIAO[valor] ? ` · ${UF_REGIAO[valor]}` : "");
+  const bancosBlock = `<div class="k-bars det-bars">\n    ${entries.map(([b, n]) => `<div class="k-bar">\n      <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n      <span class="track"><span class="fill" style="width:${Math.round(n / max * 100)}%"></span></span>\n      <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n  </div>`;
+  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n  </div>`;
+  $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${view === "subs" ? subsBlock : bancosBlock}`;
 }
 
 function abrirDetalhePainel(tipo, valor) {
@@ -663,17 +803,8 @@ function abrirDetalhePainel(tipo, valor) {
     $("detalheTitle").textContent = valor;
     $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else if (tipo === "uf") {
-    const subs = valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === valor);
-    const porBanco = {};
-    subs.forEach(r => {
-      const b = norm(r.banco) || "Sem banco";
-      porBanco[b] = (porBanco[b] || 0) + 1;
-    });
-    const entries = Object.entries(porBanco).sort((a, b) => b[1] - a[1]);
-    const max = entries.length ? entries[0][1] : 1;
-    $("detalheKicker").textContent = "Unidade federativa";
-    $("detalheTitle").textContent = valor === "Não identificado" ? "UF não identificada" : valor + (UF_REGIAO[valor] ? ` · ${UF_REGIAO[valor]}` : "");
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n        <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Bancos com mais subs nesta UF</div>\n      <div class="k-bars det-bars">\n        ${entries.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / max * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>`;
+    state.ufDetalheView = "bancos";
+    renderDetalheUf(valor);
   } else if (tipo === "regiao") {
     const subs = base.filter(r => UF_REGIAO[ufDoSub(r)] === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
     const porUF = {};
@@ -702,7 +833,7 @@ function camposFichaSub(r) {
   return {
     identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", emp ? norm(emp.razao_social) : "" ], [ "CNPJ do grupo", norm(r[CONFIG.COL_CNPJ_GRUPO]) ] ],
     vinculo: [ [ "Banco", norm(r.banco) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
-    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Gerente comercial", norm(r.gerente_comercial) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
+    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Gerente comercial", norm(r.gerente_comercial) ], [ "Superintendente", norm(r.superintendente) ], [ "Supervisor", norm(r.supervisor) ], [ "Gerente", norm(r.gerente) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
   };
 }
 
@@ -1252,15 +1383,8 @@ function renderKPIs() {
   });
   const top = Object.entries(porBanco).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxTop = top.length ? top[0][1] : 1;
-  const cnpjBanco = {};
-  ativos.forEach(r => {
-    const c = norm(r.cnpj);
-    if (!c) return;
-    (cnpjBanco[c] = cnpjBanco[c] || new Set).add(norm(r.banco));
-  });
-  const multiBanco = Object.values(cnpjBanco).filter(s => s.size > 1).length;
   const incompletos = reais.filter(r => !norm(r.gerente_comercial) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
-  $("kpis").innerHTML = `\n    <div class="kpi"><div class="k-label">Ativos</div><div class="k-val cyan">${ativos.length}</div><div class="k-sub">${pct}% do total</div></div>\n    <div class="kpi"><div class="k-label">Inativos</div><div class="k-val red">${inativos.length}</div><div class="k-sub">de ${reais.length} cadastros</div></div>\n    <div class="kpi"><div class="k-label">Bancos ativos</div><div class="k-val">${bancos.size}</div><div class="k-sub">com ao menos 1 sub</div></div>\n    <div class="kpi"><div class="k-label">Gerentes</div><div class="k-val">${gerentes.size}</div><div class="k-sub">carteiras distintas</div></div>\n    <div class="kpi"><div class="k-label">Parceiros multi-banco</div><div class="k-val">${multiBanco}</div><div class="k-sub">mesmo CNPJ em 2+ bancos</div></div>\n    <div class="kpi"><div class="k-label">Cadastros incompletos</div><div class="k-val" style="color:var(--warn)">${incompletos}</div><div class="k-sub">sem gerente / código / status</div></div>\n    <div class="kpi wide">\n      <div class="k-label">Top bancos por ativos</div>\n      <div class="k-bars">\n        ${top.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxTop * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("")}\n      </div>\n    </div>`;
+  $("kpis").innerHTML = `\n    <div class="kpi"><div class="k-label">Ativos</div><div class="k-val cyan">${ativos.length}</div><div class="k-sub">${pct}% do total</div></div>\n    <div class="kpi"><div class="k-label">Inativos</div><div class="k-val red">${inativos.length}</div><div class="k-sub">de ${reais.length} cadastros</div></div>\n    <div class="kpi"><div class="k-label">Bancos ativos</div><div class="k-val">${bancos.size}</div><div class="k-sub">com ao menos 1 sub</div></div>\n    <div class="kpi"><div class="k-label">Gerentes</div><div class="k-val">${gerentes.size}</div><div class="k-sub">carteiras distintas</div></div>\n    <div class="kpi"><div class="k-label">Cadastros incompletos</div><div class="k-val" style="color:var(--warn)">${incompletos}</div><div class="k-sub">sem gerente / código / status</div></div>\n    <div class="kpi wide">\n      <div class="k-label">Top bancos por ativos</div>\n      <div class="k-bars">\n        ${top.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxTop * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("")}\n      </div>\n    </div>`;
 }
 
 function setRazaoByCnpj(cnpj) {
@@ -1561,6 +1685,7 @@ function atualizarBadgeDuvidas() {
   const b = $("duvidasBadge");
   b.textContent = abertas;
   b.style.display = abertas > 0 ? "inline-block" : "none";
+  $("duvidasDot").classList.toggle("show", abertas > 0);
 }
 
 function renderDuvidas() {
@@ -1759,7 +1884,10 @@ function entrarGestor() {
   $("filtrosTop").appendChild($("filtrosWrap"));
   $("filtrosTop").style.display = "flex";
   $("fldTipo").style.display = "";
+  $("fldSuper").style.display = "";
+  $("fldSupervisor").style.display = "";
   $("fldGerente").style.display = "";
+  aplicarToggleFiltros();
   switchTab("painel");
   renderKPIs();
   aplicarFiltros();
@@ -1787,7 +1915,10 @@ function sairGestor() {
   $("filtrosTop").style.display = "flex";
   $("sidebar").style.display = "none";
   $("fldTipo").style.display = "none";
+  $("fldSuper").style.display = "none";
+  $("fldSupervisor").style.display = "none";
   $("fldGerente").style.display = "none";
+  aplicarToggleFiltros();
   switchTab("welcome");
   aplicarFiltros();
   verificarRespostas();
@@ -2618,8 +2749,7 @@ async function anexarArquivoBanco() {
     const up = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ}/${path}`, {
       method: "POST",
       headers: {
-        apikey: CONFIG.SUPABASE_KEY,
-        Authorization: "Bearer " + CONFIG.SUPABASE_KEY,
+        ...H(),
         "Content-Type": file.type || "application/octet-stream",
         "x-upsert": "false"
       },
@@ -2659,12 +2789,10 @@ async function anexarArquivoBanco() {
 async function excluirArquivoBanco(id, path) {
   if (!confirm("Excluir este anexo?")) return;
   try {
+    const { "Content-Type": _ct, ...delHeaders } = H();
     const del = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ}/${path}`, {
       method: "DELETE",
-      headers: {
-        apikey: CONFIG.SUPABASE_KEY,
-        Authorization: "Bearer " + CONFIG.SUPABASE_KEY
-      }
+      headers: delHeaders
     });
     if (!del.ok && del.status !== 404) throw new Error(`Storage HTTP ${del.status} — ${await del.text()}`);
     const res = await fetch(`${REST_BANCO_ARQ()}?id=eq.${id}`, {
@@ -2746,8 +2874,7 @@ async function anexarArquivoSub() {
     const up = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ_SUB}/${path}`, {
       method: "POST",
       headers: {
-        apikey: CONFIG.SUPABASE_KEY,
-        Authorization: "Bearer " + CONFIG.SUPABASE_KEY,
+        ...H(),
         "Content-Type": file.type || "application/octet-stream",
         "x-upsert": "false"
       },
@@ -2787,12 +2914,10 @@ async function anexarArquivoSub() {
 async function excluirArquivoSub(id, path) {
   if (!confirm("Excluir este documento?")) return;
   try {
+    const { "Content-Type": _ct, ...delHeaders } = H();
     const del = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ_SUB}/${path}`, {
       method: "DELETE",
-      headers: {
-        apikey: CONFIG.SUPABASE_KEY,
-        Authorization: "Bearer " + CONFIG.SUPABASE_KEY
-      }
+      headers: delHeaders
     });
     if (!del.ok && del.status !== 404) throw new Error(`Storage HTTP ${del.status} — ${await del.text()}`);
     const res = await fetch(`${REST_SUB_ARQ()}?id=eq.${id}`, {
@@ -3250,7 +3375,14 @@ function bindForm() {
 }
 
 function bind() {
-  [ "fBusca", "fBanco", "fStatus", "fTipo", "fGerente" ].forEach(id => {
+  $("sidebarToggleBtn").onclick = () => {
+    document.querySelector(".sidebar-col").classList.toggle("expanded");
+  };
+  $("toggleFiltrosBtn").onclick = () => {
+    state.filtrosVisiveis = !state.filtrosVisiveis;
+    aplicarToggleFiltros();
+  };
+  [ "fBusca", "fBanco", "fStatus", "fTipo", "fSuper", "fSupervisor", "fGerente" ].forEach(id => {
     const ev = id === "fBusca" ? "input" : "change";
     $(id).addEventListener(ev, aplicarFiltros);
   });
@@ -3259,6 +3391,8 @@ function bind() {
     $("fBanco").value = "";
     $("fStatus").value = "ATIVO";
     $("fTipo").value = "";
+    $("fSuper").value = "";
+    $("fSupervisor").value = "";
     $("fGerente").value = "";
     aplicarFiltros();
   };
@@ -3396,6 +3530,12 @@ function bind() {
   });
   $("subPdfBtn").onclick = exportarFichaSubPDF;
   $("detalheBody").addEventListener("click", e => {
+    const toggle = e.target.closest("[data-uf-view]");
+    if (toggle) {
+      state.ufDetalheView = toggle.dataset.ufView;
+      renderDetalheUf(state.detalheAtual.valor);
+      return;
+    }
     const item = e.target.closest("[data-rowid]");
     if (item) abrirFichaSub(+item.dataset.rowid);
   });
@@ -3505,6 +3645,7 @@ async function initTicker() {
   $("sidebar").style.display = "none";
   $("filtrosTop").appendChild($("filtrosWrap"));
   $("filtrosTop").style.display = "flex";
+  aplicarToggleFiltros();
   switchTab("welcome");
   initClock();
   initTicker();
@@ -3513,6 +3654,9 @@ async function initTicker() {
   renderNotifPanel();
   verificarRespostas();
   setInterval(verificarRespostas, 2e4);
+  setInterval(() => {
+    if (state.gestor) carregarDuvidas();
+  }, 2e4);
   restaurarSessao("gestor").then(resultado => {
     if (resultado) {
       state.gestorNome = resultado.nome;
