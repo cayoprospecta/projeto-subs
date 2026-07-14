@@ -482,7 +482,7 @@
     <div class="modal-head"><h2 id="formTitle">Novo substabelecido</h2><button class="x" data-close>&times;</button></div>
     <div class="modal-body">
       <div class="form-grid">
-        <div class="field"><label>Nome do sub <span class="req">*</span></label><input id="f_sub" type="text" placeholder="Qualquer nome"></div>
+        <div class="field"><label>Nome do sub <span class="req">*</span></label><input id="f_sub" type="text" placeholder="..."></div>
         <div class="field"><label>CNPJ do sub <span class="req">*</span></label>
           <input id="f_cnpj_subs" type="text" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00">
           <div class="hint" id="cnpjSubHint"></div>
@@ -506,7 +506,9 @@
         <div class="field"><label>Cód. substabelecido</label><input id="f_codsub" type="text"></div>
         <div class="field"><label>Cód. parceiro</label><input id="f_codparc" type="text"></div>
         <div class="field"><label>Responsável (empresa)</label><input id="f_resp" type="text"></div>
-        <div class="field"><label>Gerente comercial <span class="req">*</span></label><input id="f_gerente" type="text" placeholder="Digite o nome"></div>
+        <div class="field"><label>Superintendente</label><select id="f_superintendente"><option value="">Selecione…</option></select></div>
+        <div class="field"><label>Supervisor</label><select id="f_supervisor"><option value="">Selecione…</option></select></div>
+        <div class="field"><label>Gerente <span class="req">*</span></label><select id="f_gerente"><option value="">Selecione…</option></select></div>
         <div class="field"><label id="lblComissao">Comissão <span class="req" id="comissaoReq" style="display:none">*</span></label><input id="f_comissao" type="text" placeholder="ex.: 90% (repasse ao sub, o restante fica com a empresa)"><div class="hint" id="hintComissao">Texto livre. Ex.: "90%" = o sub recebe 90% do banco, 10% fica com a empresa.</div></div>
       </div>
     </div>

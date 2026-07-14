@@ -146,7 +146,11 @@ a{color:var(--cyan)}
 }
 .sidebar-head{font-family:var(--disp);font-weight:700;font-size:15px;color:var(--side-txt);padding-bottom:8px;border-bottom:1px solid var(--side-line)}
 .sidebar .field label{color:var(--side-dim)}
-.sidebar .field input,.sidebar .field select,.sidebar .field textarea{background:var(--side-bg);border:1px solid var(--side-line);color:var(--side-txt)}
+.sidebar .field input,.sidebar .field select,.sidebar .field textarea{background-color:var(--side-bg);border:1px solid var(--side-line);color:var(--side-txt)}
+.sidebar .field select{
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%239aabc9' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.sidebar .field select:hover{border-color:var(--cyan)}
 .sidebar .field input::placeholder,.sidebar .field textarea::placeholder{color:var(--side-dim)}
 .sidebar .field input:focus,.sidebar .field select:focus,.sidebar .field textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(26,86,196,.25)}
 .sidebar .field select option{background:var(--side-bg2);color:var(--side-txt)}
@@ -247,6 +251,14 @@ header.top .notif-wrap .btn{
   padding:13px 14px;font-size:15px;color:var(--txt);
   border:1px solid var(--line2);background:#fff;transition:.15s;
 }
+.field select{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  padding-right:40px;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.75 6 6.25 11 1.75' fill='none' stroke='%2354687f' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 15px center;background-size:11px 7px;
+}
+.field select:hover{border-color:#adbfd8}
+.field select::-ms-expand{display:none}
 .field textarea{font-family:inherit;resize:vertical;line-height:1.5}
 .field input::placeholder,.field textarea::placeholder{color:var(--dim)}
 .field input:focus,.field select:focus,.field textarea:focus{

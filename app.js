@@ -82,6 +82,8 @@ const norm = v => (v == null ? "" : String(v)).trim();
 
 const lower = v => norm(v).toLowerCase();
 
+const maiusc = v => norm(v).toLocaleUpperCase("pt-BR");
+
 const LS_PENDENTES = "prospecta_duvidas_pendentes";
 
 const getPendentes = () => {
@@ -487,6 +489,34 @@ function montarFiltros() {
   fill("fSupervisor", distintos("supervisor"));
   fill("fGerente", distintos("gerente"));
   preencherBancosForm();
+  preencherEquipeForm();
+}
+
+const CAMPOS_EQUIPE = [ [ "f_superintendente", "superintendente" ], [ "f_supervisor", "supervisor" ], [ "f_gerente", "gerente" ] ];
+
+function preencherEquipeForm() {
+  CAMPOS_EQUIPE.forEach(([ selId, coluna ]) => {
+    const sel = $(selId);
+    if (!sel) return;
+    const atual = sel.value;
+    const nomes = distintos(coluna);
+    sel.innerHTML = '<option value="">Selecione…</option>' + nomes.map(v => `<option>${escapeHtml(v)}</option>`).join("");
+    if (atual && nomes.includes(atual)) sel.value = atual;
+  });
+}
+
+function setEquipe(selId, val) {
+  const sel = $(selId), v = norm(val);
+  if (!sel) return;
+  sel.querySelectorAll("option[data-legacy]").forEach(o => o.remove());
+  if (v && ![ ...sel.options ].some(o => o.value === v)) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v + " (atual)";
+    o.dataset.legacy = "1";
+    sel.appendChild(o);
+  }
+  sel.value = v;
 }
 
 function preencherBancosForm() {
@@ -730,7 +760,7 @@ function renderPainel() {
   const inativos = reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   const pendentes = reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
   const andamento = reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
-  const incompFn = r => !norm(r.gerente_comercial) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
+  const incompFn = r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
   const incompativeis = reais.filter(incompFn);
   const filtro = state.painelFiltro || "TODOS";
   let base = reais;
@@ -766,7 +796,7 @@ function painelBase() {
   if (f === "INATIVO") return reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   if (f === "PENDENTE") return reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
   if (f === "EM_ANDAMENTO") return reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
-  if (f === "INCOMPATIVEL") return reais.filter(r => !norm(r.gerente_comercial) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
+  if (f === "INCOMPATIVEL") return reais.filter(r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
   return reais;
 }
 
@@ -785,7 +815,7 @@ function renderDetalheUf(valor) {
   $("detalheKicker").textContent = "Unidade federativa";
   $("detalheTitle").textContent = valor === "Não identificado" ? "UF não identificada" : valor + (UF_REGIAO[valor] ? ` · ${UF_REGIAO[valor]}` : "");
   const bancosBlock = `<div class="k-bars det-bars">\n    ${entries.map(([b, n]) => `<div class="k-bar">\n      <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n      <span class="track"><span class="fill" style="width:${Math.round(n / max * 100)}%"></span></span>\n      <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n  </div>`;
-  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n  </div>`;
+  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n  </div>`;
   $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${view === "subs" ? subsBlock : bancosBlock}`;
 }
 
@@ -801,7 +831,7 @@ function abrirDetalhePainel(tipo, valor) {
     const ativos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
     $("detalheKicker").textContent = "Banco";
     $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else if (tipo === "uf") {
     state.ufDetalheView = "bancos";
     renderDetalheUf(valor);
@@ -816,7 +846,7 @@ function abrirDetalhePainel(tipo, valor) {
     const maxUF = entriesUF.length ? entriesUF[0][1] : 1;
     $("detalheKicker").textContent = "Região";
     $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente_comercial) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else return;
   $("detalheOverlay").classList.add("show");
 }
@@ -833,7 +863,7 @@ function camposFichaSub(r) {
   return {
     identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", emp ? norm(emp.razao_social) : "" ], [ "CNPJ do grupo", norm(r[CONFIG.COL_CNPJ_GRUPO]) ] ],
     vinculo: [ [ "Banco", norm(r.banco) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
-    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Gerente comercial", norm(r.gerente_comercial) ], [ "Superintendente", norm(r.superintendente) ], [ "Supervisor", norm(r.supervisor) ], [ "Gerente", norm(r.gerente) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
+    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Superintendente", norm(r.superintendente) ], [ "Supervisor", norm(r.supervisor) ], [ "Gerente", norm(r.gerente) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
   };
 }
 
@@ -1201,7 +1231,7 @@ async function exportarDetalhePDF() {
       doc.autoTable(Object.assign({}, tabelaBase, {
         startY: yFim + 7,
         head: [ [ "#", "Nome do sub", "CNPJ", "Tipo", "Cód. sub", "Gerente", "Status" ] ],
-        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", norm(r.cnpj_subs) || "—", norm(r.tipo_cadastro) || "—", norm(r.cod_substabelecido) || "—", norm(r.gerente_comercial) || "—", norm(r.status).toUpperCase() || "—" ]),
+        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", norm(r.cnpj_subs) || "—", norm(r.tipo_cadastro) || "—", norm(r.cod_substabelecido) || "—", norm(r.gerente) || "—", norm(r.status).toUpperCase() || "—" ]),
         columnStyles: {
           0: {
             cellWidth: 9,
@@ -1375,7 +1405,7 @@ function renderKPIs() {
   const inativos = reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   const pct = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
   const bancos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
-  const gerentes = new Set(ativos.map(r => norm(r.gerente_comercial)).filter(Boolean));
+  const gerentes = new Set(ativos.map(r => norm(r.gerente)).filter(Boolean));
   const porBanco = {};
   ativos.forEach(r => {
     const b = norm(r.banco) || "—";
@@ -1383,7 +1413,7 @@ function renderKPIs() {
   });
   const top = Object.entries(porBanco).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxTop = top.length ? top[0][1] : 1;
-  const incompletos = reais.filter(r => !norm(r.gerente_comercial) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
+  const incompletos = reais.filter(r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
   $("kpis").innerHTML = `\n    <div class="kpi"><div class="k-label">Ativos</div><div class="k-val cyan">${ativos.length}</div><div class="k-sub">${pct}% do total</div></div>\n    <div class="kpi"><div class="k-label">Inativos</div><div class="k-val red">${inativos.length}</div><div class="k-sub">de ${reais.length} cadastros</div></div>\n    <div class="kpi"><div class="k-label">Bancos ativos</div><div class="k-val">${bancos.size}</div><div class="k-sub">com ao menos 1 sub</div></div>\n    <div class="kpi"><div class="k-label">Gerentes</div><div class="k-val">${gerentes.size}</div><div class="k-sub">carteiras distintas</div></div>\n    <div class="kpi"><div class="k-label">Cadastros incompletos</div><div class="k-val" style="color:var(--warn)">${incompletos}</div><div class="k-sub">sem gerente / código / status</div></div>\n    <div class="kpi wide">\n      <div class="k-label">Top bancos por ativos</div>\n      <div class="k-bars">\n        ${top.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxTop * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("")}\n      </div>\n    </div>`;
 }
 
@@ -1436,7 +1466,10 @@ function abrirForm(id) {
   set("f_codsub", r.cod_substabelecido);
   set("f_codparc", r.cod_parceiro);
   set("f_resp", r.responsavel_empresa);
-  set("f_gerente", r.gerente_comercial);
+  preencherEquipeForm();
+  setEquipe("f_superintendente", r.superintendente);
+  setEquipe("f_supervisor", r.supervisor);
+  setEquipe("f_gerente", r.gerente);
   set("f_comissao", r.comissao);
   atualizarObrigatoriedadeComissao();
   $("formSave").textContent = id ? "Salvar" : "Avançar";
@@ -1453,18 +1486,24 @@ function payloadDoForm() {
     const v = $(el).value.trim();
     return v === "" ? null : v;
   };
+  const G = el => {
+    const v = g(el);
+    return v === null ? null : maiusc(v);
+  };
   return {
-    nome_subs: g("f_sub"),
+    nome_subs: G("f_sub"),
     cnpj_subs: g("f_cnpj_subs"),
     [CONFIG.COL_CNPJ_GRUPO]: g("f_cnpj"),
-    banco: g("f_banco"),
-    tipo_cadastro: g("f_tipo"),
-    cod_loja_banco: g("f_codloja"),
-    cod_substabelecido: g("f_codsub"),
-    cod_parceiro: g("f_codparc"),
-    responsavel_empresa: g("f_resp"),
-    gerente_comercial: g("f_gerente"),
-    comissao: g("f_comissao")
+    banco: G("f_banco"),
+    tipo_cadastro: G("f_tipo"),
+    cod_loja_banco: G("f_codloja"),
+    cod_substabelecido: G("f_codsub"),
+    cod_parceiro: G("f_codparc"),
+    responsavel_empresa: G("f_resp"),
+    superintendente: G("f_superintendente"),
+    supervisor: G("f_supervisor"),
+    gerente: G("f_gerente"),
+    comissao: G("f_comissao")
   };
 }
 
@@ -2095,8 +2134,8 @@ async function salvarVinculoBanco(bancoId) {
   const body = {
     banco_id: bancoId,
     empresa_grupo_id: +empresaId,
-    codigo_corban: codigo || null,
-    tipo_sub: tipo || null,
+    codigo_corban: maiusc(codigo) || null,
+    tipo_sub: maiusc(tipo) || null,
     status: "ATIVO"
   };
   const existente = vinculoAtivoDoBanco(bancoId);
@@ -2156,8 +2195,8 @@ async function salvarBanco() {
     return;
   }
   const body = {
-    nome_banco: nome,
-    gerente_banco: gerente,
+    nome_banco: maiusc(nome),
+    gerente_banco: maiusc(gerente),
     contato_gerente: contato,
     email_gerente: email,
     suporte_banco: suporte || null
