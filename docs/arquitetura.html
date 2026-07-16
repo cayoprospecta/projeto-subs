@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapa do Projeto — Gestão de Substabelecidos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f6fa; --bg2:#eaf0f7; --panel:#fff; --panel2:#f6f9fd;
+  --line:#dfe6f0; --line2:#c8d4e5;
+  --txt:#122135; --muted:#54687f; --dim:#7f92a9;
+  --cyan:#1a56c4; --cyan-dim:#12409a;
+  --ativo:#0e8a5f; --inativo:#c93a3f; --warn:#a06514;
+  --side-bg:#0f1f38; --side-bg2:#182b4c; --side-line:#26395c;
+  --side-txt:#e9eef8; --side-muted:#9aabc9; --side-dim:#6c7fa3;
+  --shadow:0 12px 34px rgba(15,31,56,.10);
+  --shadow-sm:0 2px 8px rgba(15,31,56,.05);
+  --sans:'Inter',system-ui,sans-serif;
+  --disp:'Source Serif 4',Georgia,serif;
+  --mono:'IBM Plex Mono','Roboto Mono',monospace;
+  --nav-w:270px;
+}
+*{box-sizing:border-box;border-radius:0!important;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--txt); font-family:var(--sans);
+  font-size:15.5px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- navegação lateral ---------- */
+.nav{
+  position:fixed; top:0; left:0; bottom:0; width:var(--nav-w); z-index:50;
+  background:var(--side-bg); border-right:1px solid var(--side-line);
+  display:flex; flex-direction:column; overflow-y:auto;
+}
+.nav-head{padding:26px 24px 20px; border-bottom:1px solid var(--side-line)}
+.nav-kicker{font-size:10px; font-weight:600; letter-spacing:.28em; text-transform:uppercase; color:#7fa9ee}
+.nav-head h1{font-family:var(--disp); font-weight:700; font-size:21px; color:#fff; margin-top:9px; line-height:1.25}
+.nav-head .sub{font-size:12.5px; color:var(--side-muted); margin-top:8px}
+.nav ol{list-style:none; padding:14px 0 30px}
+.nav a{
+  display:flex; gap:11px; align-items:baseline; padding:9px 24px;
+  color:var(--side-muted); text-decoration:none; font-size:13.5px; font-weight:500;
+  border-left:3px solid transparent; transition:.15s;
+}
+.nav a:hover{color:#fff; background:var(--side-bg2)}
+.nav a.active{color:#fff; background:var(--side-bg2); border-left-color:var(--cyan)}
+.nav a .n{font-family:var(--mono); font-size:11.5px; color:var(--side-dim); min-width:14px}
+.nav a.active .n,.nav a:hover .n{color:#7fa9ee}
+.nav-foot{margin-top:auto; padding:18px 24px; border-top:1px solid var(--side-line); font-size:11.5px; color:var(--side-dim)}
+
+/* ---------- área de leitura ---------- */
+.wrap{margin-left:var(--nav-w); padding:0 40px 120px; max-width:1040px}
+.hero{padding:64px 0 40px; border-bottom:1px solid var(--line)}
+.hero .kicker{font-size:10px; font-weight:600; letter-spacing:.28em; text-transform:uppercase; color:var(--cyan)}
+.hero h1{font-family:var(--disp); font-weight:700; font-size:46px; line-height:1.12; margin-top:14px}
+.hero .lead{font-size:17.5px; color:var(--muted); margin-top:18px; max-width:70ch}
+.hero .meta{display:flex; gap:10px; flex-wrap:wrap; margin-top:24px}
+
+section{padding-top:56px}
+h2{
+  font-family:var(--disp); font-weight:700; font-size:29px; letter-spacing:-.01em;
+  padding-bottom:12px; border-bottom:2px solid var(--side-bg); margin-bottom:22px;
+  scroll-margin-top:24px;
+}
+h2 .n{font-family:var(--mono); font-size:16px; font-weight:500; color:var(--dim); margin-right:12px}
+h3{font-family:var(--disp); font-weight:600; font-size:19px; margin:30px 0 12px}
+p{margin:14px 0; max-width:74ch}
+ul,ol.body{margin:14px 0 14px 22px; max-width:74ch}
+li{margin:7px 0}
+strong{font-weight:600}
+a{color:var(--cyan); text-decoration:none; border-bottom:1px solid rgba(26,86,196,.28)}
+a:hover{border-bottom-color:var(--cyan)}
+
+code{font-family:var(--mono); font-size:.875em; background:var(--bg2); border:1px solid var(--line); padding:1px 5px; color:var(--cyan-dim)}
+h2 code,h3 code{font-size:.8em}
+
+/* referência de arquivo:linha */
+.ref{font-family:var(--mono); font-size:12.5px; white-space:nowrap; border-bottom-color:transparent}
+.ref:hover{border-bottom-color:var(--cyan)}
+
+/* ---------- blocos ---------- */
+.card{background:var(--panel); border:1px solid var(--line); border-top:3px solid var(--line2); box-shadow:var(--shadow-sm); padding:22px 26px; margin:22px 0}
+
+.diagram{
+  background:var(--side-bg); color:var(--side-txt); border-top:3px solid var(--cyan);
+  font-family:var(--mono); font-size:12.5px; line-height:1.7; white-space:pre;
+  padding:26px; margin:24px 0; overflow-x:auto; box-shadow:var(--shadow);
+}
+.diagram .hl{color:#7fa9ee}
+
+.note{
+  background:var(--panel); border:1px solid var(--line2); border-left:3px solid var(--warn);
+  padding:18px 22px; margin:22px 0; box-shadow:var(--shadow-sm);
+}
+.note.crit{border-left-color:var(--inativo)}
+.note.info{border-left-color:var(--cyan)}
+.note .tag{
+  display:block; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--warn); margin-bottom:8px;
+}
+.note.crit .tag{color:var(--inativo)}
+.note.info .tag{color:var(--cyan)}
+.note p{margin:8px 0}
+.note p:first-of-type{margin-top:0}
+.note p:last-child{margin-bottom:0}
+
+/* ---------- tabelas ---------- */
+.tablecard{background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow-sm); margin:22px 0; overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:14px}
+thead th{
+  background:#fff; color:var(--muted); font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.1em; padding:12px 16px; text-align:left;
+  box-shadow:inset 0 -2px var(--side-bg), inset 0 -3px var(--line);
+  white-space:nowrap;
+}
+tbody td{padding:13px 16px; border-bottom:1px solid var(--line); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#f9fbfe}
+tbody tr:hover{background:#eef4fc}
+td code{background:transparent; border:none; padding:0; font-size:12.5px}
+td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--muted); white-space:nowrap}
+.t-fields code{display:inline-block; margin:2px 4px 2px 0; background:var(--bg2); border:1px solid var(--line); padding:1px 5px}
+
+/* ---------- badges ---------- */
+.badge{display:inline-block; padding:4px 10px; font-size:10.5px; font-weight:600; letter-spacing:.08em; border:1px solid; white-space:nowrap}
+.badge.ativo{color:var(--ativo); background:#e6f5ef; border-color:#b3e0cd}
+.badge.inativo{color:var(--inativo); background:#fbeeee; border-color:#f0cbcc}
+.badge.pendente{color:var(--warn); background:#fdf6e7; border-color:#e8d5a4}
+.badge.andamento{color:var(--cyan-dim); background:#eaf1fc; border-color:#b9cff2}
+.badge.neutro{color:var(--muted); background:var(--panel2); border-color:var(--line2)}
+
+/* ---------- lista de riscos ---------- */
+.risks{list-style:none; margin:22px 0 0; counter-reset:r}
+.risks li{
+  counter-increment:r; position:relative; background:var(--panel);
+  border:1px solid var(--line); border-left:3px solid var(--line2);
+  padding:16px 20px 16px 60px; margin:10px 0; box-shadow:var(--shadow-sm); transition:.18s;
+  max-width:none;
+}
+.risks li:hover{transform:translateY(-1px); border-left-color:var(--cyan); box-shadow:0 8px 22px rgba(15,31,56,.08)}
+.risks li::before{
+  content:counter(r); position:absolute; left:0; top:0; bottom:0; width:44px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:15px; font-weight:600; color:var(--dim);
+  background:var(--panel2); border-right:1px solid var(--line);
+}
+.risks li.top{border-left-color:var(--inativo)}
+.risks li.top::before{color:var(--inativo)}
+.risks b{font-weight:600}
+
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin:24px 0}
+.kpi{background:var(--panel); border:1px solid var(--line); border-top:3px solid var(--line2); padding:16px 18px; box-shadow:var(--shadow-sm); transition:.18s}
+.kpi:hover{transform:translateY(-2px); border-top-color:var(--cyan); box-shadow:0 10px 26px rgba(15,31,56,.09)}
+.kpi .k-label{font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); font-weight:600}
+.kpi .k-val{font-family:var(--disp); font-weight:700; font-size:30px; margin-top:6px; font-variant-numeric:tabular-nums}
+.kpi .k-sub{font-size:12.5px; color:var(--muted); margin-top:4px}
+
+@media (max-width:1000px){
+  :root{--nav-w:0px}
+  .nav{position:static; width:auto; flex-direction:column}
+  .nav ol{display:flex; flex-wrap:wrap; padding:10px 14px 16px}
+  .nav a{padding:7px 12px; border-left:none; border-bottom:2px solid transparent}
+  .nav a.active{border-left:none; border-bottom-color:var(--cyan)}
+  .nav-foot{display:none}
+  .wrap{margin-left:0; padding:0 22px 80px}
+  .hero{padding:38px 0 30px}
+  .hero h1{font-size:33px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-head">
+    <span class="nav-kicker">Prospecta</span>
+    <h1>Mapa do Projeto</h1>
+    <div class="sub">Gestão de Substabelecidos</div>
+  </div>
+  <ol id="toc">
+    <li><a href="#s1"><span class="n">1</span> Visão geral</a></li>
+    <li><a href="#s2"><span class="n">2</span> Arquivos</a></li>
+    <li><a href="#s3"><span class="n">3</span> Modos de acesso</a></li>
+    <li><a href="#s4"><span class="n">4</span> Modelo de dados</a></li>
+    <li><a href="#s5"><span class="n">5</span> As telas</a></li>
+    <li><a href="#s6"><span class="n">6</span> Trilha de auditoria</a></li>
+    <li><a href="#s7"><span class="n">7</span> Dados no navegador</a></li>
+    <li><a href="#s8"><span class="n">8</span> Dependências externas</a></li>
+    <li><a href="#s9"><span class="n">9</span> Pontos de atenção</a></li>
+    <li><a href="#s10"><span class="n">10</span> Para quem vai mexer</a></li>
+  </ol>
+  <div class="nav-foot">Documento interno · uso restrito</div>
+</nav>
+
+<main class="wrap">
+
+<header class="hero">
+  <span class="kicker">Documentação técnica</span>
+  <h1>Mapa do Projeto<br>Gestão de Substabelecidos</h1>
+  <p class="lead">O que existe, como as peças conversam, onde cada coisa mora e quais pontos merecem atenção. Escrito para quem vai <strong>manter</strong>, <strong>auditar</strong> ou <strong>assumir</strong> o projeto.</p>
+  <div class="meta">
+    <span class="badge neutro">Site estático</span>
+    <span class="badge neutro">Supabase</span>
+    <span class="badge neutro">Cloudflare Worker</span>
+    <span class="badge neutro">Sem build</span>
+  </div>
+</header>
+
+<!-- 1 -->
+<section id="s1">
+  <h2><span class="n">01</span>Visão geral</h2>
+  <p>O sistema controla os <strong>substabelecidos</strong> da Prospecta — parceiros comerciais cadastrados em nome da empresa nos bancos — e tudo que orbita esse cadastro: os bancos parceiros, a produção mensal, a agenda de compromissos, os documentos anexados e um canal de dúvidas entre consultores e gestores.</p>
+  <p>É um <strong>site estático</strong> (HTML + CSS + JavaScript puro, sem framework e sem etapa de build) que fala direto com o <strong>Supabase</strong> (PostgreSQL + autenticação + storage) através de um <strong>proxy Cloudflare Worker</strong>.</p>
+
+<div class="diagram">Navegador (GitHub Pages)                Cloudflare Worker                Supabase
+┌──────────────────────┐               ┌──────────────────┐            ┌──────────────────┐
+│ index.html           │               │ prospecta-proxy  │            │ PostgREST  /rest │
+│ styles.css           │  fetch  ───▶  │ .cayonauta       │  ────────▶ │ GoTrue     /auth │
+│ app.js               │               │ .workers.dev     │            │ Storage /storage │
+│ brasil-mapa.svg      │               │                  │            │                  │
+└──────────────────────┘               │ <span class="hl">injeta a apikey</span>  │            │ <span class="hl">RLS por token</span>    │
+                                       └──────────────────┘            └──────────────────┘</div>
+
+  <p>O papel do Worker é <strong>guardar a chave do Supabase</strong>. Repare em <a class="ref" href="app.js#L3">app.js:3</a>: <code>SUPABASE_KEY</code> é string vazia no código do site — quem preenche o header <code>apikey</code> real é o Worker. Por isso <code>SUPABASE_URL</code> aponta para o domínio do Worker, e não para o Supabase.</p>
+
+  <div class="note crit">
+    <span class="tag">Fora deste repositório</span>
+    <p>O <strong>código-fonte do Worker não está versionado aqui.</strong> Ele é parte essencial da arquitetura e precisa ser localizado antes de qualquer auditoria séria — é ele quem detém a credencial e decide o que passa.</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <h2><span class="n">02</span>Arquivos</h2>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>Arquivo</th><th>Linhas</th><th>Papel</th></tr></thead>
+      <tbody>
+        <tr><td><a class="ref" href="index.html">index.html</a></td><td class="num">~783</td><td>Estrutura de todas as telas e modais. Tudo já existe no DOM; a navegação só troca <code>display</code>.</td></tr>
+        <tr><td><a class="ref" href="app.js">app.js</a></td><td class="num">~3.710</td><td>Toda a lógica: auth, chamadas REST, renderização, validação, PDFs, gráficos.</td></tr>
+        <tr><td><a class="ref" href="styles.css">styles.css</a></td><td class="num">~743</td><td>Visual completo. Sem pré-processador.</td></tr>
+        <tr><td><a class="ref" href="brasil-mapa.svg">brasil-mapa.svg</a></td><td class="num">—</td><td>Mapa do Brasil por UF, carregado sob demanda e colorido pelo painel.</td></tr>
+        <tr><td><a class="ref" href="DESIGN-SYSTEM.md">DESIGN-SYSTEM.md</a></td><td class="num">—</td><td>Tokens e componentes visuais, para reuso em outros projetos.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Não há <code>package.json</code>, build, testes automatizados nem workflow de CI.</strong> O deploy é o próprio push para o GitHub Pages: o que está no <code>main</code> é o que está no ar.</p>
+
+  <h3>Nota sobre o estilo do <code>app.js</code></h3>
+  <p>O arquivo tem marcas claras de ter passado por um <strong>minificador e depois um beautifier</strong>: <code>new Date</code> sem parênteses, <code>1e3</code>/<code>6e4</code> no lugar de <code>1000</code>/<code>60000</code>, ausência quase total de comentários. Ele é legível e editável, mas não é "código escrito à mão" no formato atual. Quem for auditar deve saber disso antes de julgar o estilo; quem for editar deve saber que não existe um fonte "original" mais bonito em outro lugar — <strong>este é o fonte</strong>.</p>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <h2><span class="n">03</span>Modos de acesso</h2>
+  <p>São dois modos, com dois logins reais no Supabase e dois slots de sessão independentes (<a class="ref" href="app.js#L245">app.js:245</a>):</p>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>Modo</th><th>Como entra</th><th>O que vê</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge andamento">Consulta</span></td>
+          <td>Senha única na conta compartilhada <code>consultor@prospecta.local</code><br><a class="ref" href="app.js#L3254">app.js:3254</a></td>
+          <td>Navegação lateral reduzida, sem botões de criar/editar, sem KPIs de gestão. Pode enviar dúvidas.</td>
+        </tr>
+        <tr>
+          <td><span class="badge ativo">Gestor</span></td>
+          <td>Login + senha individuais (<code>login</code> vira <code>login@prospecta.local</code>)<br><a class="ref" href="app.js#L250">app.js:250</a></td>
+          <td>Todas as abas, criação/edição/exclusão, painel, histórico, respostas às dúvidas.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Login é <code>password grant</code> no GoTrue; a sessão vai para <code>sessionStorage</code> e é renovada por um timer agendado um minuto antes de expirar (<a class="ref" href="app.js#L335">app.js:335</a>). Fechar o navegador encerra a sessão.</p>
+
+  <div class="note crit">
+    <span class="tag">Ponto central para a auditoria</span>
+    <p><code>entrarGestor()</code> e <code>sairGestor()</code> (<a class="ref" href="app.js#L1910">app.js:1910</a>) apenas <strong>mostram e escondem elementos da interface</strong>. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente.</p>
+    <p>Quem realmente precisa impedir um consultor de gravar dados é a <strong>RLS (Row Level Security) do Supabase</strong>, avaliando o JWT de cada requisição. O código do site presume que essa RLS existe e está correta (ele até trata o caso, ver as mensagens "RLS bloqueou a exclusão" em <a class="ref" href="app.js#L2846">app.js:2846</a> e <a class="ref" href="app.js#L2971">app.js:2971</a>), mas <strong>isso não é verificável a partir deste repositório</strong>. Confirmar as políticas RLS tabela por tabela é o item número um de qualquer auditoria aqui.</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <h2><span class="n">04</span>Modelo de dados</h2>
+  <p>Todas as tabelas são acessadas via PostgREST. Os nomes estão centralizados no <code>CONFIG</code> em <a class="ref" href="app.js#L1">app.js:1-17</a>.</p>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>Tabela</th><th>Guarda</th><th>Campos principais</th></tr></thead>
+      <tbody>
+        <tr><td><code>substabelecidos</code></td><td>O cadastro central</td><td class="t-fields"><code>nome_subs</code><code>cnpj_subs</code><code>cnpj_empresa</code><code>banco</code><code>tipo_cadastro</code><code>cod_loja_banco</code><code>cod_substabelecido</code><code>cod_parceiro</code><code>responsavel_empresa</code><code>superintendente</code><code>supervisor</code><code>gerente</code><code>comissao</code><code>status</code><code>obs</code></td></tr>
+        <tr><td><code>empresas_grupo</code></td><td>Empresas do grupo Prospecta</td><td class="t-fields"><code>razao_social</code><code>fantasia</code><code>cnpj</code></td></tr>
+        <tr><td><code>bancos</code></td><td>Bancos parceiros</td><td class="t-fields"><code>nome_banco</code><code>gerente_banco</code><code>contato_gerente</code><code>email_gerente</code><code>suporte_banco</code></td></tr>
+        <tr><td><code>banco_vinculos</code></td><td>Qual empresa do grupo é credenciada em qual banco</td><td class="t-fields"><code>banco_id</code><code>empresa_grupo_id</code><code>codigo_corban</code><code>tipo_sub</code><code>status</code></td></tr>
+        <tr><td><code>producao_mensal</code></td><td>Produção por sub e mês</td><td class="t-fields"><code>cod_substabelecido</code><code>mes_referencia</code><code>valor_bruto</code></td></tr>
+        <tr><td><code>producao_convenio</code></td><td>Produção quebrada por convênio</td><td class="t-fields"><code>cod_substabelecido</code><code>banco</code><code>convenio_nome</code><code>valor_bruto</code><code>valor_liquido</code><code>valor_pago</code><code>valor_pendente</code><code>valor_cancelado</code><code>valor_em_andamento</code><code>valor_base_comissao</code></td></tr>
+        <tr><td><code>agenda</code></td><td>Compromissos</td><td class="t-fields"><code>titulo</code><code>tipo</code><code>data</code><code>hora</code><code>alerta_dias_antes</code><code>vinculo_tipo</code><code>vinculo_nome</code><code>com_quem</code><code>link</code><code>observacoes</code></td></tr>
+        <tr><td><code>historico</code></td><td>Trilha de auditoria</td><td class="t-fields"><code>acao</code><code>entidade</code><code>ref_id</code><code>descricao</code><code>criado_em</code></td></tr>
+        <tr><td><code>mensagem</code></td><td>Dúvidas e respostas</td><td class="t-fields"><code>nome_enviou</code><code>mensagem_enviada</code><code>nome_respondeu</code><code>mensagem_respondida</code></td></tr>
+        <tr><td><code>banco_arquivos</code></td><td>Anexos de banco (metadados)</td><td>aponta para o bucket <code>arquivos_bancos</code></td></tr>
+        <tr><td><code>substabelecido_arquivos</code></td><td>Documentos do sub (metadados)</td><td>aponta para o bucket <code>arquivos_subs</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Storage</h3>
+  <p>Dois buckets, <code>arquivos_bancos</code> e <code>arquivos_subs</code> (<a class="ref" href="app.js#L2723">app.js:2723</a> e <a class="ref" href="app.js#L2855">app.js:2855</a>). Os arquivos são lidos por <strong>URL pública</strong> (<code>/storage/v1/object/public/…</code>).</p>
+  <div class="note">
+    <span class="tag">Atenção</span>
+    <p>Quem tiver o link do arquivo acessa o arquivo, sem autenticação. Considerando que aqui trafegam documentos de credenciamento e CNPJs de parceiros, avaliar se esses buckets deveriam ser privados com URL assinada é um item de auditoria.</p>
+  </div>
+
+  <h3>Convenções importantes do domínio</h3>
+  <ul>
+    <li><strong>Texto é gravado em maiúsculas.</strong> Quase todo campo passa por <code>maiusc()</code> antes de ir ao banco (<a class="ref" href="app.js#L1489">app.js:1489</a>). Campo vazio vira <code>null</code>, nunca <code>""</code>.</li>
+    <li><strong>A UF do sub é derivada do código, não é uma coluna.</strong> <code>ufDoSub()</code> (<a class="ref" href="app.js#L169">app.js:169</a>) lê as duas primeiras letras de <code>cod_substabelecido</code> e valida contra a tabela <code>UF_REGIAO</code>. Se o padrão de codificação dos subs mudar, o mapa do painel e os recortes por região param de funcionar silenciosamente.</li>
+    <li><strong>Um cadastro só é "real"</strong> se tiver nome ou CNPJ preenchido (<code>isReal</code>, <a class="ref" href="app.js#L137">app.js:137</a>) — é isso que separa as linhas de verdade dos rascunhos nas contagens.</li>
+    <li><strong><code>comissao</code> é texto livre</strong>, não número. Convenção: <code>"90%"</code> significa que o sub recebe 90% e 10% fica com a empresa. Obrigatório apenas quando <code>tipo_cadastro = SUBSTABELECIDO</code>.</li>
+  </ul>
+
+  <h3>Status do substabelecido</h3>
+  <p>Definidos em <a class="ref" href="app.js#L1571">app.js:1571</a>. Todo cadastro novo nasce <code>EM_ANDAMENTO</code>.</p>
+  <p style="display:flex; gap:10px; flex-wrap:wrap">
+    <span class="badge ativo">ATIVO</span>
+    <span class="badge pendente">PENDENTE</span>
+    <span class="badge andamento">EM ANDAMENTO</span>
+    <span class="badge inativo">INATIVO</span>
+  </p>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <h2><span class="n">05</span>As telas</h2>
+  <p>A navegação é feita por <code>switchTab()</code> (<a class="ref" href="app.js#L3282">app.js:3282</a>), que troca a visibilidade de dez <code>&lt;div&gt;</code> já presentes no HTML e dispara o render da aba escolhida.</p>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>Aba</th><th>View</th><th>O que faz</th></tr></thead>
+      <tbody>
+        <tr><td>Painel</td><td><code>viewPainel</code></td><td>Indicadores gerais, donut/radar/barras/linha e o mapa do Brasil por UF. Clicar num recorte abre o detalhe.</td></tr>
+        <tr><td>Substabelecidos</td><td><code>viewSubs</code></td><td>Tabela principal com filtros, ordenação por coluna, paginação (25/página) e ficha em PDF.</td></tr>
+        <tr><td>Pendentes</td><td><code>viewPendentes</code></td><td>Recorte dos cadastros incompletos.</td></tr>
+        <tr><td>Bancos</td><td><code>viewBancos</code><br><code>viewBancosConsulta</code></td><td>Cadastro dos bancos, vínculo com empresa do grupo, passo a passo de credenciamento e anexos. Duas versões: gestor e consulta.</td></tr>
+        <tr><td>Produção</td><td><code>viewProducao</code></td><td>Busca um sub, mostra produção mensal e por convênio, com KPIs e barras.</td></tr>
+        <tr><td>Agenda</td><td><code>viewAgenda</code></td><td>Calendário mensal + lista, com alerta antecipado configurável por compromisso.</td></tr>
+        <tr><td>Histórico</td><td><code>viewHist</code></td><td>Últimos 300 registros da trilha de auditoria.</td></tr>
+        <tr><td>Dúvidas</td><td><code>viewDuvidas</code></td><td>Caixa de mensagens: consultor pergunta, gestor responde.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note info">
+    <span class="tag">Como os dados chegam</span>
+    <p>Boa parte é carregada <strong>uma vez</strong> em <code>carregar()</code> (<a class="ref" href="app.js#L400">app.js:400</a>), que dispara cinco requisições em paralelo (subs, empresas, bancos, agenda, vínculos) e guarda tudo no objeto <code>state</code> (<a class="ref" href="app.js#L19">app.js:19</a>). Filtros, ordenação e KPIs trabalham <strong>em memória</strong>, sem novas idas ao servidor. Produção, histórico e dúvidas são carregados sob demanda ao abrir a aba.</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <h2><span class="n">06</span>Trilha de auditoria</h2>
+  <p><code>logHist()</code> (<a class="ref" href="app.js#L2521">app.js:2521</a>) grava na tabela <code>historico</code> a cada ação relevante — criar/editar sub, mudar status, criar/editar banco, mexer na agenda. É a fonte para responder <em>"quem mudou o quê e quando"</em>.</p>
+  <p>Duas limitações a registrar:</p>
+  <div class="note">
+    <span class="tag">Limitação 1 — gravação best-effort</span>
+    <p>A gravação do histórico <strong>não bloqueia a ação</strong>. Se o <code>logHist</code> falhar, a operação de negócio já aconteceu e simplesmente não fica registrada. A trilha é <em>best-effort</em>, não transacional.</p>
+  </div>
+  <div class="note">
+    <span class="tag">Limitação 2 — janela de 300 registros</span>
+    <p>O histórico é exibido limitado aos <strong>300 registros mais recentes</strong> (<a class="ref" href="app.js#L2546">app.js:2546</a>). Os antigos continuam na tabela, mas não aparecem na tela — para auditar período anterior, é preciso consultar o Supabase direto.</p>
+  </div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <h2><span class="n">07</span>Dados no navegador</h2>
+  <p>Além da sessão, o app guarda três listas em <code>localStorage</code> (<a class="ref" href="app.js#L87">app.js:87-135</a>):</p>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>Chave</th><th>Para quê</th></tr></thead>
+      <tbody>
+        <tr><td><code>prospecta_duvidas_pendentes</code></td><td>Dúvidas enviadas aguardando resposta, para acender o badge de notificação</td></tr>
+        <tr><td><code>prospecta_minhas_duvidas</code></td><td>As dúvidas que este navegador enviou</td></tr>
+        <tr><td><code>prospecta_notif_historico</code></td><td>Histórico local de notificações lidas</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">
+    <span class="tag">Consequência prática</span>
+    <p><strong>"Minhas dúvidas" é por navegador, não por pessoa.</strong> Trocar de máquina ou limpar o navegador perde o vínculo — as mensagens continuam no banco, mas o usuário não as reconhece mais como suas.</p>
+  </div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+  <h2><span class="n">08</span>Dependências externas</h2>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>O quê</th><th>De onde</th><th>Como é carregado</th></tr></thead>
+      <tbody>
+        <tr><td>Inter, Source Serif 4, IBM Plex Mono</td><td>Google Fonts</td><td><code>&lt;link&gt;</code> no <code>&lt;head&gt;</code></td></tr>
+        <tr><td>jsPDF + html2canvas</td><td>CDN</td><td>Sob demanda, só ao exportar PDF (<code>loadPdfLibs</code>, <a class="ref" href="app.js#L1077">app.js:1077</a>)</td></tr>
+        <tr><td>Previsão do tempo</td><td>Open-Meteo</td><td>Ticker do topo (<code>initTicker</code>, <a class="ref" href="app.js#L3636">app.js:3636</a>)</td></tr>
+        <tr><td>Mapa do Brasil</td><td>arquivo local</td><td><code>fetch</code> sob demanda, com cache em memória</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Não há gerenciador de pacotes: as versões das bibliotecas de CDN estão fixadas nas URLs dentro do <code>app.js</code>.</p>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+  <h2><span class="n">09</span>Pontos de atenção</h2>
+  <p>Levantados a partir da leitura do código. <strong>Nenhum deles é um problema confirmado</strong> — são as perguntas que uma auditoria precisa responder olhando também o Supabase e o Worker, que estão fora deste repositório.</p>
+  <ol class="risks">
+    <li class="top"><b>Políticas RLS</b> — o item mais importante. Toda a separação entre gestor e consulta depende delas. O cliente não protege nada.</li>
+    <li class="top"><b>O Cloudflare Worker não está versionado aqui.</b> Detém a credencial do Supabase e não há como revisar seu código, seu CORS ou seu rate limiting a partir deste repositório.</li>
+    <li class="top"><b>Buckets públicos.</b> Documentos de credenciamento acessíveis por link direto, sem autenticação.</li>
+    <li><b>Conta de consulta compartilhada.</b> Uma senha única para todos os consultores significa que a trilha de auditoria não consegue distinguir <em>qual</em> consultor fez o quê, e que a rotação da senha exige avisar todo mundo ao mesmo tempo.</li>
+    <li><b>O README cita <code>importador_producao.html</code>, que não existe neste repositório.</b> Ou a ferramenta se perdeu, ou vive em outro lugar, ou a linha ficou obsoleta. Vale resolver — hoje é a única instrução escrita sobre como a produção entra no sistema.</li>
+    <li><b>Sem testes e sem CI.</b> Todo push para o <code>main</code> vai direto ao ar. Não existe rede de segurança automatizada; a verificação é manual.</li>
+    <li><b>A UF derivada do código do sub</b> é um acoplamento implícito entre uma convenção de nomenclatura e um recurso visível (mapa e recortes regionais).</li>
+  </ol>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <h2><span class="n">10</span>Para quem vai mexer no código</h2>
+
+  <div class="card">
+    <h3 style="margin-top:0">Rodar localmente</h3>
+    <p>Basta servir a pasta (<code>python -m http.server</code>, Live Server do VS Code, qualquer coisa). Abrir o <code>index.html</code> direto pelo <code>file://</code> quebra o <code>fetch</code> do <code>brasil-mapa.svg</code>.</p>
+    <p><strong>Não há build.</strong> Editou, salvou, recarregou. Publicar é dar push no <code>main</code>.</p>
+  </div>
+
+  <h3>Ao adicionar um campo ao cadastro</h3>
+  <p>O campo precisa aparecer em <strong>quatro lugares</strong>:</p>
+  <ol class="body">
+    <li>o <code>&lt;input&gt;</code> no <code>index.html</code></li>
+    <li>o <code>payloadDoForm()</code> (<a class="ref" href="app.js#L1484">app.js:1484</a>)</li>
+    <li>o preenchimento em <code>abrirForm()</code> (<a class="ref" href="app.js#L1452">app.js:1452</a>)</li>
+    <li>a coluna no Supabase</li>
+  </ol>
+
+  <h3>Ao adicionar uma aba</h3>
+  <p>Botão no <code>index.html</code> com <code>data-tab</code>, uma <code>&lt;div id="viewX"&gt;</code>, e as duas entradas correspondentes em <code>switchTab()</code> (<a class="ref" href="app.js#L3282">app.js:3282</a>).</p>
+
+  <h3>Ao adicionar um status ou um estilo</h3>
+  <p>Siga as fórmulas do <a href="DESIGN-SYSTEM.md">DESIGN-SYSTEM</a> — em especial a regra dos cantos retos e a das três famílias tipográficas. É o que mantém o sistema parecendo um sistema só.</p>
+
+  <div class="note info">
+    <span class="tag">Regra que não se negocia</span>
+    <p>Toda ação que muda dados deve chamar <code>logHist()</code>. É o que sustenta a trilha de auditoria.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+// destaca no índice a seção que está sendo lida
+const links = [...document.querySelectorAll('.nav a')];
+const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(a => a.classList.remove('active'));
+      const a = map.get(e.target.id);
+      if (a) a.classList.add('active');
+    }
+  });
+}, { rootMargin: '-10% 0px -80% 0px' });
+document.querySelectorAll('section[id]').forEach(s => obs.observe(s));
+</script>
+
+</body>
+</html>
