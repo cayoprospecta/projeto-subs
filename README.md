@@ -19,7 +19,12 @@ Site estático (HTML, CSS e JavaScript puro, sem framework), hospedado no GitHub
 - `index.html` — estrutura das telas
 - `app.js` — toda a lógica do sistema
 - `styles.css` — visual
-- `importador_producao.html` — ferramenta separada pra converter planilhas de produção em comandos prontos para o banco de dados
+- `importador_producao.html` — ferramenta separada pra converter planilhas de produção em comandos prontos para o banco de dados (⚠️ não está neste repositório — ver [ARQUITETURA.md](ARQUITETURA.md#9-pontos-de-atenção))
+
+## Documentação
+
+- [ARQUITETURA.md](ARQUITETURA.md) — mapa completo do projeto: arquitetura, modelo de dados, telas, controle de acesso e pontos de atenção. Comece por aqui se você vai manter ou auditar o sistema.
+- [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) — tokens e componentes visuais.
 
 ## Acesso
 

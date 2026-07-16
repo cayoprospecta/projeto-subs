@@ -1,6 +1,5 @@
 const CONFIG = {
   SUPABASE_URL: "https://prospecta-proxy.cayonauta.workers.dev",
-  SUPABASE_KEY: "",
   TABLE: "substabelecidos",
   COL_CNPJ_GRUPO: "cnpj_empresa",
   TABLE_EMPRESAS: "empresas_grupo",
