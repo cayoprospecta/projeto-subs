@@ -397,6 +397,7 @@ function toast(msg, kind) {
 }
 
 async function carregar() {
+  if (!state.sessions.gestor && !state.sessions.consultor) return;
   $("count").textContent = "carregando…";
   try {
     const [resSubs, resEmp, resBancos, resAgenda, resBancoVinc] = await Promise.all([ fetch(`${REST()}?select=*&order=id.asc`, {
@@ -1854,6 +1855,7 @@ async function verificarRespostas() {
   if (state.gestor) return;
   const pend = getPendentes();
   if (!pend.length) return;
+  if (!state.sessions.consultor) return;
   try {
     const res = await fetch(`${REST_MSG()}?id=in.(${pend.join(",")})&select=id,mensagem_enviada,mensagem_respondida,nome_respondeu`, {
       headers: H()
