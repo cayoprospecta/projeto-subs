@@ -38,6 +38,7 @@ const state = {
   editingPassoId: null,
   obsMode: null,
   obsSubId: null,
+  delSubId: null,
   obsPendingBody: null,
   hist: [],
   agenda: [],
@@ -879,7 +880,93 @@ function abrirFichaSub(id) {
   $("subBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${(STATUS_SUB[stU] || {
     classe: "none"
   }).classe}">${escapeHtml((STATUS_SUB[stU] || {}).label || "—")}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(r.banco) || "—")}</b><span>banco</span></div>\n      <div class="det-kpi sub-box"><b>${uf || "—"}</b><span>UF</span></div>\n      <div class="det-kpi sub-box"><b>${obs.length}</b><span>observaç${obs.length === 1 ? "ão" : "ões"}</span></div>\n    </div>\n\n    <div class="det-sec">Identificação</div>\n    ${grid(campos.identificacao)}\n\n    <div class="det-sec">Vínculo bancário</div>\n    ${grid(campos.vinculo)}\n\n    <div class="det-sec">Gestão comercial</div>\n    ${grid(campos.gestao)}\n\n    ${obs.length ? `\n      <div class="det-sec">Observações</div>\n      <div class="sub-obs-list">\n        ${obs.map(b => `<div class="obs-block">\n          <div class="obs-head">\n            <span class="obs-quem">${escapeHtml(norm(b.quem) || "—")}</span>\n            <span class="obs-quando">${escapeHtml(b.em ? fmtData(b.em) : "")}</span>\n          </div>\n          <div class="obs-text">${escapeHtml(norm(b.texto))}</div>\n        </div>`).join("")}\n      </div>` : ""}\n  `;
+  $("subDelBtn").style.display = state.gestor ? "" : "none";
   $("subOverlay").classList.add("show");
+}
+
+const FRASE_EXCLUSAO = "confirmar exclusão";
+
+function abrirConfirmExclusaoSub() {
+  const r = state.rows.find(x => x.id === state.fichaSubId);
+  if (!r || !state.gestor) return;
+  state.delSubId = r.id;
+  $("delSubNome").textContent = norm(r.nome_subs) || "sem nome";
+  $("delSubInput").value = "";
+  $("delSubConfirm").disabled = true;
+  $("delSubOverlay").classList.add("show");
+  $("delSubInput").focus();
+}
+
+function validarFraseExclusao() {
+  const ok = lower($("delSubInput").value) === FRASE_EXCLUSAO;
+  $("delSubConfirm").disabled = !ok;
+  return ok;
+}
+
+// Apaga o sub de vez: primeiro os anexos (storage + tabela), depois a linha.
+// Sem isso, as linhas de substabelecido_arquivos ficariam órfãs e os arquivos
+// no bucket, sem dono.
+async function excluirSubDefinitivo() {
+  const id = state.delSubId;
+  if (!id || !state.gestor || !validarFraseExclusao()) return;
+  const r = state.rows.find(x => x.id === id);
+  if (!r) return;
+  const btn = $("delSubConfirm");
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span> Excluindo…';
+  try {
+    const resArq = await fetch(`${REST_SUB_ARQ()}?substabelecido_id=eq.${id}&select=id,path`, {
+      headers: H()
+    });
+    if (!resArq.ok) throw new Error(`anexos HTTP ${resArq.status} — ${await resArq.text()}`);
+    const anexos = await resArq.json();
+    if (anexos.length) {
+      const { "Content-Type": _ct, ...delHeaders } = H();
+      for (const a of anexos) {
+        const del = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ_SUB}/${a.path}`, {
+          method: "DELETE",
+          headers: delHeaders
+        });
+        if (!del.ok && del.status !== 404) throw new Error(`Storage HTTP ${del.status} — ${await del.text()}`);
+      }
+      const delRows = await fetch(`${REST_SUB_ARQ()}?substabelecido_id=eq.${id}`, {
+        method: "DELETE",
+        headers: H()
+      });
+      if (!delRows.ok) throw new Error(`anexos HTTP ${delRows.status} — ${await delRows.text()}`);
+    }
+    const res = await fetch(`${REST()}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: {
+        ...H(),
+        Prefer: "return=representation"
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const del = await res.json();
+    if (!Array.isArray(del) || !del.length) {
+      toast("Nada foi apagado. Falta a policy de DELETE para 'authenticated' no Supabase.", "err");
+      return;
+    }
+    state.rows = state.rows.filter(x => x.id !== id);
+    state.delSubId = null;
+    state.fichaSubId = null;
+    $("delSubOverlay").classList.remove("show");
+    $("subOverlay").classList.remove("show");
+    montarFiltros();
+    aplicarFiltros();
+    renderPendentes();
+    renderKPIs();
+    logHist("excluiu_sub", "substabelecidos", id, `Excluiu definitivamente o sub ${norm(r.nome_subs)} (${norm(r.banco)})`);
+    toast("Substabelecido excluído definitivamente", "ok");
+  } catch (e) {
+    console.error(e);
+    toast("Erro ao excluir: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
 }
 
 async function exportarFichaSubPDF() {
@@ -3600,6 +3687,12 @@ function bind() {
     th.onclick = () => ordenarPorColuna(th.dataset.sort);
   });
   $("subPdfBtn").onclick = exportarFichaSubPDF;
+  $("subDelBtn").onclick = abrirConfirmExclusaoSub;
+  $("delSubInput").addEventListener("input", validarFraseExclusao);
+  $("delSubInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && validarFraseExclusao()) excluirSubDefinitivo();
+  });
+  $("delSubConfirm").onclick = excluirSubDefinitivo;
   $("detalheBody").addEventListener("click", e => {
     const toggle = e.target.closest("[data-uf-view]");
     if (toggle) {

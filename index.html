@@ -755,7 +755,26 @@
     <div class="modal-foot">
       <button class="btn ghost" data-close>Fechar</button>
       <span class="spacer"></span>
+      <button class="btn danger solid" id="subDelBtn" style="display:none">&#128465; Excluir</button>
       <button class="btn primary" id="subPdfBtn">&#8681; Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="delSubOverlay">
+  <div class="modal sm">
+    <div class="modal-head"><h2>Excluir substabelecido</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="del-warn">Esta ação é <b>permanente</b>. O substabelecido <b id="delSubNome">—</b> e todos os seus documentos anexados serão apagados do sistema e do banco de dados. Não há como desfazer.</div>
+      <div class="field">
+        <label>Para confirmar, digite <b>confirmar exclusão</b></label>
+        <input id="delSubInput" type="text" autocomplete="off" placeholder="confirmar exclusão">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <span class="spacer"></span>
+      <button class="btn danger solid" id="delSubConfirm" disabled>Excluir definitivamente</button>
     </div>
   </div>
 </div>

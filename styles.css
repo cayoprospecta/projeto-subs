@@ -201,6 +201,8 @@ header.top .notif-wrap .btn{
 .btn.ghost:hover{background:#eef4fc}
 .btn.danger{color:var(--inativo);border-color:#eecdce}
 .btn.danger:hover{background:#fbeeee;border-color:var(--inativo)}
+.btn.danger.solid{background:var(--inativo);border-color:var(--inativo);color:#fff}
+.btn.danger.solid:hover{background:#ab2f34;border-color:#ab2f34}
 .btn.sm{padding:7px 13px;font-size:13px}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .req{color:var(--inativo);font-weight:700}
@@ -647,6 +649,7 @@ tr[data-rowid]{cursor:pointer}
 
 .overlay{position:fixed;inset:0;background:rgba(15,31,56,.42);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 #subOverlay{z-index:150}
+#delSubOverlay{z-index:160}
 .overlay.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line2);border-top:3px solid var(--cyan);box-shadow:var(--shadow);width:100%;max-width:880px;max-height:90vh;overflow-y:auto;overflow-x:hidden}
 .modal.sm{max-width:420px}
@@ -659,6 +662,7 @@ tr[data-rowid]{cursor:pointer}
 .form-grid .full{grid-column:1/-1}
 .form-grid .sep-top{padding-top:14px;margin-top:2px;border-top:1px solid var(--line)}
 .modal-foot{display:flex;gap:11px;justify-content:flex-end;padding:18px 24px;border-top:1px solid var(--line);background:var(--panel2)}
+.del-warn{background:#fbeeee;border:1px solid #eecdce;border-left:3px solid var(--inativo);color:var(--txt);font-size:14px;line-height:1.5;padding:12px 14px;margin-bottom:18px}
 .hint{font-size:13px;color:var(--muted);margin-top:3px}
 .hint.warn,.hint .warn{color:var(--inativo);font-weight:600}
 .hint.ok{color:var(--ativo);font-weight:600}
