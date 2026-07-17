@@ -224,11 +224,11 @@ td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--m
 └──────────────────────┘               │ <span class="hl">injeta a apikey</span>  │            │ <span class="hl">RLS por token</span>    │
                                        └──────────────────┘            └──────────────────┘</div>
 
-  <p>O papel do Worker é <strong>guardar a chave do Supabase</strong>. Repare em <a class="ref" href="app.js#L3">app.js:3</a>: <code>SUPABASE_KEY</code> é string vazia no código do site — quem preenche o header <code>apikey</code> real é o Worker. Por isso <code>SUPABASE_URL</code> aponta para o domínio do Worker, e não para o Supabase.</p>
+  <p>O papel do Worker é <strong>guardar a chave do Supabase</strong>. No código do site <strong>não existe mais</strong> uma <code>SUPABASE_KEY</code> — ela foi removida do <code>CONFIG</code> (<a class="ref" href="app.js#L1">app.js:1-16</a>); quem preenche o header <code>apikey</code> real é o Worker. Por isso <code>SUPABASE_URL</code> aponta para o domínio do Worker, e não para o Supabase. O site envia apenas o <code>Authorization: Bearer &lt;JWT do usuário&gt;</code> (<a class="ref" href="app.js#L55">app.js:55</a>), e é esse JWT que a RLS avalia.</p>
 
-  <div class="note crit">
-    <span class="tag">Fora deste repositório</span>
-    <p>O <strong>código-fonte do Worker não está versionado aqui.</strong> Ele é parte essencial da arquitetura e precisa ser localizado antes de qualquer auditoria séria — é ele quem detém a credencial e decide o que passa.</p>
+  <div class="note info">
+    <span class="tag">Worker revisado — 17/07/2026</span>
+    <p>O código do Worker foi revisado (embora não esteja versionado neste repositório). Confirmado: injeta a chave <strong>anon</strong> (nunca a <code>service_role</code>, o que preservaria a RLS), repassa o JWT do usuário intacto, aplica <strong>CORS</strong> por lista fechada de origens e libera só os caminhos <code>/rest/v1</code>, <code>/auth/v1</code> e <code>/storage/v1</code>. Pendências menores: não há rate limiting próprio (o GoTrue tem o seu).</p>
   </div>
 </section>
 
@@ -276,10 +276,10 @@ td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--m
   </div>
   <p>Login é <code>password grant</code> no GoTrue; a sessão vai para <code>sessionStorage</code> e é renovada por um timer agendado um minuto antes de expirar (<a class="ref" href="app.js#L335">app.js:335</a>). Fechar o navegador encerra a sessão.</p>
 
-  <div class="note crit">
-    <span class="tag">Ponto central para a auditoria</span>
-    <p><code>entrarGestor()</code> e <code>sairGestor()</code> (<a class="ref" href="app.js#L1910">app.js:1910</a>) apenas <strong>mostram e escondem elementos da interface</strong>. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente.</p>
-    <p>Quem realmente precisa impedir um consultor de gravar dados é a <strong>RLS (Row Level Security) do Supabase</strong>, avaliando o JWT de cada requisição. O código do site presume que essa RLS existe e está correta (ele até trata o caso, ver as mensagens "RLS bloqueou a exclusão" em <a class="ref" href="app.js#L2846">app.js:2846</a> e <a class="ref" href="app.js#L2971">app.js:2971</a>), mas <strong>isso não é verificável a partir deste repositório</strong>. Confirmar as políticas RLS tabela por tabela é o item número um de qualquer auditoria aqui.</p>
+  <div class="note info">
+    <span class="tag">Ponto central — RLS revisada em 17/07/2026</span>
+    <p><code>entrarGestor()</code> e <code>sairGestor()</code> (<a class="ref" href="app.js#L1910">app.js:1910</a>) apenas <strong>mostram e escondem elementos da interface</strong>. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente. Quem impede um consultor de gravar dados é a <strong>RLS (Row Level Security) do Supabase</strong>, avaliando o JWT de cada requisição (as mensagens "RLS bloqueou a exclusão" em <a class="ref" href="app.js#L2846">app.js:2846</a> e <a class="ref" href="app.js#L2971">app.js:2971</a> tratam justamente esse caso).</p>
+    <p>As políticas RLS foram revisadas tabela por tabela e reescritas para separar gestor de consulta de verdade. A distinção usa o papel gravado em <code>app_metadata</code> de cada usuário (<code>role = gestor</code> ou <code>consulta</code>), lido pela função <code>public.eh_gestor()</code>. Escrita exige gestor; leitura é liberada a qualquer autenticado; <code>historico</code> é append-only. Scripts, testes e rollback em <code>docs/seguranca/</code>. Antes disso, as políticas existiam mas eram permissivas (<code>using true</code>) — a separação era só visual.</p>
   </div>
 </section>
 
@@ -307,10 +307,10 @@ td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--m
   </div>
 
   <h3>Storage</h3>
-  <p>Dois buckets, <code>arquivos_bancos</code> e <code>arquivos_subs</code> (<a class="ref" href="app.js#L2723">app.js:2723</a> e <a class="ref" href="app.js#L2855">app.js:2855</a>). Os arquivos são lidos por <strong>URL pública</strong> (<code>/storage/v1/object/public/…</code>).</p>
-  <div class="note">
-    <span class="tag">Atenção</span>
-    <p>Quem tiver o link do arquivo acessa o arquivo, sem autenticação. Considerando que aqui trafegam documentos de credenciamento e CNPJs de parceiros, avaliar se esses buckets deveriam ser privados com URL assinada é um item de auditoria.</p>
+  <p>Dois buckets, <code>arquivos_bancos</code> e <code>arquivos_subs</code> (<a class="ref" href="app.js#L2722">app.js:2722</a> e <a class="ref" href="app.js#L2856">app.js:2856</a>). <strong>Desde 17/07/2026 os buckets são privados.</strong></p>
+  <div class="note info">
+    <span class="tag">Leitura por link assinado</span>
+    <p>Não há mais URL pública. O app gera um <strong>link assinado que expira em 5 minutos</strong> no momento em que o usuário clica no anexo (<code>abrirArquivoAssinado</code>, <a class="ref" href="app.js#L2728">app.js:2728</a>), e só quem está autenticado consegue gerar o link. Subir e apagar arquivo exige gestor (RLS de <code>storage.objects</code>); ver/gerar link é liberado a qualquer autenticado. Detalhes em <code>docs/seguranca/</code>.</p>
   </div>
 
   <h3>Convenções importantes do domínio</h3>
@@ -411,13 +411,33 @@ td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--m
 <!-- 9 -->
 <section id="s9">
   <h2><span class="n">09</span>Pontos de atenção</h2>
-  <p>Levantados a partir da leitura do código. <strong>Nenhum deles é um problema confirmado</strong> — são as perguntas que uma auditoria precisa responder olhando também o Supabase e o Worker, que estão fora deste repositório.</p>
+
+  <h3>9.1 · Segurança — endurecimento de 17/07/2026</h3>
+  <p>Uma revisão de segurança olhou o Supabase de verdade (não só o código do site) e fechou os itens abaixo. Todo o trabalho — diagnóstico, scripts, testes e rollback — está versionado em <code>docs/seguranca/</code>.</p>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th>O que era</th><th>O que se descobriu / fez</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Políticas RLS</strong></td><td>RLS estava ligada, mas as políticas eram <code>using true</code> — a separação gestor/consulta só existia na interface. Reescritas por papel (<code>eh_gestor()</code> via <code>app_metadata</code>).</td><td><span class="badge ativo">Fechado</span></td></tr>
+        <tr><td><strong>Buckets públicos</strong></td><td>Eram públicos e liam por link permanente. Agora privados, com link assinado que expira em 5 min.</td><td><span class="badge ativo">Fechado</span></td></tr>
+        <tr><td><strong><code>anon</code> no storage</strong></td><td>Qualquer um sem login podia subir e apagar arquivos. Políticas removidas.</td><td><span class="badge ativo">Fechado</span></td></tr>
+        <tr><td><strong>RPC legado <code>verificar_acesso_consultor</code></strong></td><td>Função <code>SECURITY DEFINER</code> com <code>EXECUTE</code> para <code>anon</code>/<code>PUBLIC</code> — oráculo de senha aberto à internet. <code>EXECUTE</code> revogado.</td><td><span class="badge ativo">Fechado</span></td></tr>
+        <tr><td><strong><code>mensagem</code> e <code>codigo_parceiro</code> legíveis por <code>anon</code></strong></td><td>Qualquer um sem login lia as dúvidas / a tabela. Políticas <code>anon</code> removidas.</td><td><span class="badge ativo">Fechado</span></td></tr>
+        <tr><td><strong>Consultor escrevendo no storage</strong></td><td>Políticas de storage não checavam papel. Agora upload/exclusão exigem gestor.</td><td><span class="badge ativo">Fechado</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ainda aberto</h3>
   <ol class="risks">
-    <li class="top"><b>Políticas RLS</b> — o item mais importante. Toda a separação entre gestor e consulta depende delas. O cliente não protege nada.</li>
-    <li class="top"><b>O Cloudflare Worker não está versionado aqui.</b> Detém a credencial do Supabase e não há como revisar seu código, seu CORS ou seu rate limiting a partir deste repositório.</li>
-    <li class="top"><b>Buckets públicos.</b> Documentos de credenciamento acessíveis por link direto, sem autenticação.</li>
-    <li><b>Conta de consulta compartilhada.</b> Uma senha única para todos os consultores significa que a trilha de auditoria não consegue distinguir <em>qual</em> consultor fez o quê, e que a rotação da senha exige avisar todo mundo ao mesmo tempo.</li>
+    <li><b>O Cloudflare Worker não está versionado aqui.</b> Detém a credencial do Supabase. Foi revisado (ver seção 1): injeta a chave <em>anon</em>, repassa o JWT e tem CORS por lista fechada. Fica só a ausência de rate limiting próprio — o GoTrue tem o seu, mas a conta de consulta compartilhada é o alvo mais tentador de força bruta.</li>
+    <li><b>Conta de consulta compartilhada.</b> Uma senha única para todos os consultores significa que a trilha de auditoria não distingue <em>qual</em> consultor fez o quê, e que a rotação da senha exige avisar todo mundo ao mesmo tempo. A estrutura para logins individuais parece já existir (tabela <code>acessos</code>, hoje sem uso).</li>
+  </ol>
+
+  <h3>9.2 · Outros pontos</h3>
+  <ol class="risks">
     <li><b>O README cita <code>importador_producao.html</code>, que não existe neste repositório.</b> Ou a ferramenta se perdeu, ou vive em outro lugar, ou a linha ficou obsoleta. Vale resolver — hoje é a única instrução escrita sobre como a produção entra no sistema.</li>
+    <li><b><code>producao_convenio</code> não existe no banco.</b> O <code>CONFIG</code> a referencia (<a class="ref" href="app.js#L12">app.js:12</a>) e a aba Produção a consulta (<a class="ref" href="app.js#L3126">app.js:3126</a>), mas ela não é tabela nem view no Supabase. A chamada falha silenciosamente (o <code>catch</code> guarda lista vazia). Ou a tabela precisa ser criada, ou o código é morto e deve sair.</li>
     <li><b>Sem testes e sem CI.</b> Todo push para o <code>main</code> vai direto ao ar. Não existe rede de segurança automatizada; a verificação é manual.</li>
     <li><b>A UF derivada do código do sub</b> é um acoplamento implícito entre uma convenção de nomenclatura e um recurso visível (mapa e recortes regionais).</li>
   </ol>

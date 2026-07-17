@@ -23,7 +23,7 @@ Navegador (GitHub Pages)                Cloudflare Worker                Supabas
                                        └──────────────────┘            └──────────────────┘
 ```
 
-O papel do Worker é guardar a chave do Supabase. Repare em [app.js:3](app.js#L3): `SUPABASE_KEY` é **string vazia** no código do site — quem preenche o header `apikey` real é o Worker. Por isso `SUPABASE_URL` aponta para o domínio do Worker, e não para o Supabase.
+O papel do Worker é guardar a chave do Supabase. No código do site **não existe mais** uma `SUPABASE_KEY` — ela foi removida do `CONFIG` ([app.js:1-16](app.js#L1-L16)); quem preenche o header `apikey` real é o Worker. Por isso `SUPABASE_URL` aponta para o domínio do Worker, e não para o Supabase. O site envia apenas o `Authorization: Bearer <JWT do usuário>` ([app.js:55](app.js#L55)), e é esse JWT que a RLS avalia.
 
 > **O código-fonte do Worker não está neste repositório.** Ele é parte essencial da arquitetura e precisa ser localizado/versionado antes de qualquer auditoria séria — é ele quem detém a credencial e decide o que passa.
 
@@ -58,7 +58,9 @@ São **dois modos**, com dois logins reais no Supabase (dois slots de sessão in
 
 Login é `password grant` no GoTrue; a sessão vai para `sessionStorage` e é renovada por um timer agendado um minuto antes de expirar ([app.js:335](app.js#L335)). Fechar o navegador encerra a sessão.
 
-> **Ponto central para a auditoria:** `entrarGestor()` e `sairGestor()` ([app.js:1910](app.js#L1910)) apenas **mostram e escondem elementos da interface**. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente. Quem realmente precisa impedir um consultor de gravar dados é a **RLS (Row Level Security) do Supabase**, avaliando o JWT de cada requisição. O código do site presume que essa RLS existe e está correta (ele até trata o caso, ver as mensagens "RLS bloqueou a exclusão" em [app.js:2846](app.js#L2846) e [app.js:2971](app.js#L2971)), mas **isso não é verificável a partir deste repositório**. Confirmar as políticas RLS tabela por tabela é o item número um de qualquer auditoria aqui.
+> **Ponto central:** `entrarGestor()` e `sairGestor()` ([app.js:1910](app.js#L1910)) apenas **mostram e escondem elementos da interface**. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente. Quem impede um consultor de gravar dados é a **RLS (Row Level Security) do Supabase**, avaliando o JWT de cada requisição (as mensagens "RLS bloqueou a exclusão" em [app.js:2846](app.js#L2846) e [app.js:2971](app.js#L2971) tratam justamente esse caso).
+>
+> **Estado em 17/07/2026:** as políticas RLS foram revisadas tabela por tabela e reescritas para separar gestor de consulta de verdade. A distinção usa o papel gravado em `app_metadata` de cada usuário (`role = gestor` ou `consulta`), lido pela função `public.eh_gestor()`. Escrita (INSERT/UPDATE/DELETE) exige gestor; leitura é liberada para qualquer autenticado; `historico` é append-only. O passo a passo, os scripts e os testes estão em [docs/seguranca/](seguranca/). Antes disso, as políticas existiam mas eram permissivas (`using true`) — a separação era só visual.
 
 ---
 
@@ -80,7 +82,7 @@ Todas as tabelas são acessadas via PostgREST. Os nomes estão centralizados no 
 | `banco_arquivos` | Anexos de banco (metadados) | aponta para o bucket `arquivos_bancos` |
 | `substabelecido_arquivos` | Documentos do sub (metadados) | aponta para o bucket `arquivos_subs` |
 
-**Storage:** dois buckets, `arquivos_bancos` e `arquivos_subs` ([app.js:2723](app.js#L2723) e [app.js:2855](app.js#L2855)). Os arquivos são lidos por **URL pública** (`/storage/v1/object/public/...`). Ou seja: quem tiver o link do arquivo acessa o arquivo, sem autenticação. Considerando que aqui trafegam documentos de credenciamento e CNPJs de parceiros, **avaliar se esses buckets deveriam ser privados com URL assinada é um item de auditoria.**
+**Storage:** dois buckets, `arquivos_bancos` e `arquivos_subs` ([app.js:2722](app.js#L2722) e [app.js:2856](app.js#L2856)). **Desde 17/07/2026 os buckets são privados.** Não há mais URL pública: o app gera um **link assinado** que expira em 5 minutos no momento em que o usuário clica no anexo (`abrirArquivoAssinado`, [app.js:2728](app.js#L2728)), e só quem está autenticado consegue gerar o link. Subir e apagar arquivo exige gestor (RLS de `storage.objects`); ver/gerar link é liberado a qualquer autenticado. Detalhes e o roteiro em [docs/seguranca/](seguranca/).
 
 ### Convenções importantes do domínio
 
@@ -151,15 +153,30 @@ Não há gerenciador de pacotes: as versões das bibliotecas de CDN estão fixad
 
 ## 9. Pontos de atenção
 
-Levantados a partir da leitura do código. **Nenhum deles é um problema confirmado** — são as perguntas que uma auditoria precisa responder olhando também o Supabase e o Worker, que estão fora deste repositório.
+### 9.1. Segurança — endurecimento de 17/07/2026
 
-1. **Políticas RLS** — o item mais importante. Toda a separação entre gestor e consulta depende delas. O cliente não protege nada.
-2. **O Cloudflare Worker não está versionado aqui.** Detém a credencial do Supabase e não há como revisar seu código, seu CORS ou seu rate limiting a partir deste repositório.
-3. **Buckets públicos.** Documentos de credenciamento acessíveis por link direto, sem autenticação.
-4. **Conta de consulta compartilhada.** Uma senha única para todos os consultores significa que a trilha de auditoria não consegue distinguir *qual* consultor fez o quê, e que a rotação da senha exige avisar todo mundo ao mesmo tempo.
-5. **O README cita `importador_producao.html`, que não existe neste repositório.** Ou a ferramenta se perdeu, ou vive em outro lugar, ou a linha ficou obsoleta. Vale resolver — hoje é a única instrução escrita sobre como a produção entra no sistema.
-6. **Sem testes e sem CI.** Todo push para o `main` vai direto ao ar. Não existe rede de segurança automatizada; a verificação é manual.
-7. **A UF derivada do código do sub** é um acoplamento implícito entre uma convenção de nomenclatura e um recurso visível (mapa e recortes regionais).
+Uma revisão de segurança olhou o Supabase de verdade (não só o código do site) e fechou os itens abaixo. Todo o trabalho — diagnóstico, scripts, testes e rollback — está versionado em [docs/seguranca/](seguranca/).
+
+| O que era | O que se descobriu / fez | Estado |
+|---|---|---|
+| **Políticas RLS** | RLS estava ligada, mas as políticas eram `using true` — a separação gestor/consulta só existia na interface. Reescritas por papel (`eh_gestor()` via `app_metadata`). | ✅ Fechado |
+| **Buckets públicos** | Eram públicos e liam por link permanente. Agora privados, com link assinado que expira em 5 min. | ✅ Fechado |
+| **`anon` no storage** | Qualquer um sem login podia subir e apagar arquivos. Políticas removidas. | ✅ Fechado |
+| **RPC legado `verificar_acesso_consultor`** | Função `SECURITY DEFINER` com `EXECUTE` para `anon`/`PUBLIC` — oráculo de senha aberto à internet. `EXECUTE` revogado. | ✅ Fechado |
+| **`mensagem` e `codigo_parceiro` legíveis por `anon`** | Qualquer um sem login lia as dúvidas / a tabela. Políticas `anon` removidas. | ✅ Fechado |
+| **Consultor escrevendo no storage** | Políticas de storage não checavam papel. Agora upload/exclusão exigem gestor. | ✅ Fechado |
+
+**Ainda aberto:**
+
+1. **O Cloudflare Worker não está versionado aqui.** Detém a credencial do Supabase. Duas coisas precisam ser confirmadas no código dele: que injeta a chave **anon** (nunca a `service_role` — senão toda a RLS acima é ignorada) e que o **CORS** restringe a origem ao domínio do GitHub Pages. Todas as evidências indicam que a RLS está de fato valendo, mas o Worker é a única peça não auditável a partir deste repositório.
+2. **Conta de consulta compartilhada.** Uma senha única para todos os consultores significa que a trilha de auditoria não distingue *qual* consultor fez o quê, e que a rotação da senha exige avisar todo mundo ao mesmo tempo. A estrutura para logins individuais parece já existir (tabela `acessos`, hoje sem uso).
+
+### 9.2. Outros pontos
+
+3. **O README cita `importador_producao.html`, que não existe neste repositório.** Ou a ferramenta se perdeu, ou vive em outro lugar, ou a linha ficou obsoleta. Vale resolver — hoje é a única instrução escrita sobre como a produção entra no sistema.
+4. **`producao_convenio` não existe no banco.** O `CONFIG` a referencia ([app.js:12](app.js#L12)) e a aba Produção a consulta ([app.js:3126](app.js#L3126)), mas ela não é tabela nem view no Supabase. A chamada falha silenciosamente (o `catch` guarda lista vazia). Ou a tabela precisa ser criada, ou o código é morto e deve sair.
+5. **Sem testes e sem CI.** Todo push para o `main` vai direto ao ar. Não existe rede de segurança automatizada; a verificação é manual.
+6. **A UF derivada do código do sub** é um acoplamento implícito entre uma convenção de nomenclatura e um recurso visível (mapa e recortes regionais).
 
 ---
 

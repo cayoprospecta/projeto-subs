@@ -53,8 +53,11 @@ const state = {
 };
 
 const H = () => ({
-  apikey: CONFIG.SUPABASE_KEY,
-  Authorization: "Bearer " + ((state.sessions.gestor && state.sessions.gestor.access_token) || (state.sessions.consultor && state.sessions.consultor.access_token) || CONFIG.SUPABASE_KEY),
+  // Sem sessão, cai no sentinela "Bearer " (vazio) que o Worker reconhece
+  // e remove, virando chamada anônima limpa. NÃO trocar por outro valor:
+  // "Bearer undefined"/"Bearer null" não batem com o sentinela e o Supabase
+  // responde 401 "Expected 3 parts in JWT". O apikey real é injetado pelo Worker.
+  Authorization: "Bearer " + ((state.sessions.gestor && state.sessions.gestor.access_token) || (state.sessions.consultor && state.sessions.consultor.access_token) || ""),
   "Content-Type": "application/json"
 });
 
@@ -272,7 +275,6 @@ async function authLogin(slot, login, senha) {
     const res = await fetch(`${AUTH_URL()}/token?grant_type=password`, {
       method: "POST",
       headers: {
-        apikey: CONFIG.SUPABASE_KEY,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -304,7 +306,6 @@ async function authRefresh(slot) {
     const res = await fetch(`${AUTH_URL()}/token?grant_type=refresh_token`, {
       method: "POST",
       headers: {
-        apikey: CONFIG.SUPABASE_KEY,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -346,7 +347,6 @@ async function authLogout(slot) {
       await fetch(`${AUTH_URL()}/logout`, {
         method: "POST",
         headers: {
-          apikey: CONFIG.SUPABASE_KEY,
           Authorization: "Bearer " + sess.access_token
         }
       });
@@ -373,7 +373,6 @@ async function restaurarSessao(slot) {
   try {
     const res = await fetch(`${AUTH_URL()}/user`, {
       headers: {
-        apikey: CONFIG.SUPABASE_KEY,
         Authorization: "Bearer " + state.sessions[slot].access_token
       }
     });
@@ -2725,9 +2724,31 @@ const BUCKET_ARQ = "arquivos_bancos";
 
 const REST_BANCO_ARQ = () => `${CONFIG.SUPABASE_URL}/rest/v1/banco_arquivos`;
 
-const urlPublicaArq = path => `${CONFIG.SUPABASE_URL}/storage/v1/object/public/${BUCKET_ARQ}/${path}`;
-
 const MAX_ARQ_MB = 20;
+
+// Gera um link temporário (assinado) e abre o arquivo. Os buckets são
+// privados: não há mais URL pública. O link expira em 5 min e só é
+// emitido para quem está autenticado (a RLS de storage.objects valida).
+// A janela é aberta ANTES do await para não ser barrada por bloqueador
+// de pop-up; a URL é preenchida quando o link volta.
+async function abrirArquivoAssinado(bucket, path) {
+  const win = window.open("", "_blank");
+  try {
+    const res = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/sign/${bucket}/${path}`, {
+      method: "POST",
+      headers: H(),
+      body: JSON.stringify({ expiresIn: 300 })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const data = await res.json();
+    const url = /^https?:/.test(data.signedURL) ? data.signedURL : `${CONFIG.SUPABASE_URL}/storage/v1${data.signedURL}`;
+    if (win) win.location = url; else window.open(url, "_blank");
+  } catch (e) {
+    console.error(e);
+    if (win) win.close();
+    toast("Não foi possível abrir o arquivo.", "err");
+  }
+}
 
 function iconeArquivo(nome) {
   const ext = (nome.split(".").pop() || "").toLowerCase();
@@ -2759,7 +2780,7 @@ function renderArquivosBanco(list) {
     el.innerHTML = '<div class="dl-empty">Nenhum arquivo anexado.</div>';
     return;
   }
-  el.innerHTML = list.map(a => `\n    <div class="pa-item">\n      <span class="pa-ic">${iconeArquivo(norm(a.nome_arquivo))}</span>\n      <div class="pa-info">\n        <a class="pa-titulo" href="${urlPublicaArq(a.path)}" target="_blank" rel="noopener" title="Abrir ${escapeHtml(norm(a.nome_arquivo))}">${escapeHtml(norm(a.titulo) || norm(a.nome_arquivo))}</a>\n        <span class="pa-nome">${escapeHtml(norm(a.nome_arquivo))}</span>\n      </div>\n      <button class="pa-del" title="Excluir anexo" data-arqdel="${a.id}" data-arqpath="${escapeHtml(a.path)}">&times;</button>\n    </div>`).join("");
+  el.innerHTML = list.map(a => `\n    <div class="pa-item">\n      <span class="pa-ic">${iconeArquivo(norm(a.nome_arquivo))}</span>\n      <div class="pa-info">\n        <a class="pa-titulo" href="#" data-arqopen="${escapeHtml(a.path)}" data-arqbucket="${BUCKET_ARQ}" title="Abrir ${escapeHtml(norm(a.nome_arquivo))}">${escapeHtml(norm(a.titulo) || norm(a.nome_arquivo))}</a>\n        <span class="pa-nome">${escapeHtml(norm(a.nome_arquivo))}</span>\n      </div>\n      <button class="pa-del" title="Excluir anexo" data-arqdel="${a.id}" data-arqpath="${escapeHtml(a.path)}">&times;</button>\n    </div>`).join("");
 }
 
 async function anexarArquivoBanco() {
@@ -2857,8 +2878,6 @@ const BUCKET_ARQ_SUB = "arquivos_subs";
 
 const REST_SUB_ARQ = () => `${CONFIG.SUPABASE_URL}/rest/v1/substabelecido_arquivos`;
 
-const urlPublicaArqSub = path => `${CONFIG.SUPABASE_URL}/storage/v1/object/public/${BUCKET_ARQ_SUB}/${path}`;
-
 async function carregarArquivosSub(subId) {
   const el = $("obsArqList");
   el.innerHTML = '<div class="dl-empty">Carregando…</div>';
@@ -2880,7 +2899,7 @@ function renderArquivosSub(list) {
     el.innerHTML = '<div class="dl-empty">Nenhum documento anexado.</div>';
     return;
   }
-  el.innerHTML = list.map(a => `\n    <div class="pa-item">\n      <span class="pa-ic">${iconeArquivo(norm(a.nome_arquivo))}</span>\n      <div class="pa-info">\n        <a class="pa-titulo" href="${urlPublicaArqSub(a.path)}" target="_blank" rel="noopener" title="Abrir ${escapeHtml(norm(a.nome_arquivo))}">${escapeHtml(norm(a.titulo) || norm(a.nome_arquivo))}</a>\n        <span class="pa-nome">${escapeHtml(norm(a.nome_arquivo))}</span>\n      </div>\n      <button class="pa-del" title="Excluir documento" data-subarqdel="${a.id}" data-subarqpath="${escapeHtml(a.path)}">&times;</button>\n    </div>`).join("");
+  el.innerHTML = list.map(a => `\n    <div class="pa-item">\n      <span class="pa-ic">${iconeArquivo(norm(a.nome_arquivo))}</span>\n      <div class="pa-info">\n        <a class="pa-titulo" href="#" data-arqopen="${escapeHtml(a.path)}" data-arqbucket="${BUCKET_ARQ_SUB}" title="Abrir ${escapeHtml(norm(a.nome_arquivo))}">${escapeHtml(norm(a.titulo) || norm(a.nome_arquivo))}</a>\n        <span class="pa-nome">${escapeHtml(norm(a.nome_arquivo))}</span>\n      </div>\n      <button class="pa-del" title="Excluir documento" data-subarqdel="${a.id}" data-subarqpath="${escapeHtml(a.path)}">&times;</button>\n    </div>`).join("");
 }
 
 async function anexarArquivoSub() {
@@ -3386,6 +3405,12 @@ function bindForm() {
   };
   $("passoArqAdd").onclick = anexarArquivoBanco;
   $("passoArqList").addEventListener("click", e => {
+    const o = e.target.closest("[data-arqopen]");
+    if (o) {
+      e.preventDefault();
+      abrirArquivoAssinado(o.dataset.arqbucket, o.dataset.arqopen);
+      return;
+    }
     const d = e.target.closest("[data-arqdel]");
     if (d) excluirArquivoBanco(+d.dataset.arqdel, d.dataset.arqpath);
   });
@@ -3404,6 +3429,12 @@ function bindForm() {
   };
   $("obsArqAdd").onclick = anexarArquivoSub;
   $("obsArqList").addEventListener("click", e => {
+    const o = e.target.closest("[data-arqopen]");
+    if (o) {
+      e.preventDefault();
+      abrirArquivoAssinado(o.dataset.arqbucket, o.dataset.arqopen);
+      return;
+    }
     const d = e.target.closest("[data-subarqdel]");
     if (d) excluirArquivoSub(+d.dataset.subarqdel, d.dataset.subarqpath);
   });
