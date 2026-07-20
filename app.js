@@ -597,8 +597,9 @@ function montarFiltros() {
     el.innerHTML = base + vals.map(v => `<option>${escapeHtml(v)}</option>`).join("");
     el.value = atual && vals.includes(atual) ? atual : "";
   };
-  const bancosCadastrados = [ ...new Set(state.bancos.map(b => norm(b.nome_banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  fill("fBanco", bancosCadastrados);
+  // O filtro de banco é montado por montarFiltroBancos(), a partir do
+  // resultado atual dos demais filtros — não da lista de bancos cadastrados.
+  montarFiltroBancos();
   fill("fTipo", distintos("tipo_cadastro"));
   // Filtros de equipe agora por id (value=id, label=nome), lidos das tabelas novas
   montarFiltrosEquipe();
@@ -671,21 +672,41 @@ function aplicarToggleFiltros() {
   $("toggleFiltrosBtn").textContent = oculto ? "Mostrar filtros" : "Esconder filtros";
 }
 
+// Todos os filtros MENOS o de banco. Serve para dois usos: filtrar a tabela
+// (somando o banco) e montar a lista de bancos com o que sobra dos demais.
+function passaFiltrosExcetoBanco(r) {
+  const q = lower($("fBusca").value), st = $("fStatus").value, tipo = $("fTipo").value, sup = $("fSuper").value, supv = $("fSupervisor").value, ger = $("fGerente").value;
+  if (st && norm(r.status).toUpperCase() !== st) return false;
+  if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
+  if (sup && String(superintendenteDoSub(r)) !== sup) return false;
+  if (supv && String(supervisorDoSub(r)) !== supv) return false;
+  if (ger && String(r.gerente_id) !== ger) return false;
+  if (q) {
+    const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
+    if (!blob.includes(q)) return false;
+  }
+  return true;
+}
+
+// A lista de bancos mostra só os que têm ao menos um sub no resultado atual.
+// Com Status=Ativo, some banco que só tem sub inativo — assim nenhuma opção
+// do filtro leva a zero resultados.
+function montarFiltroBancos() {
+  const el = $("fBanco");
+  if (!el) return;
+  const atual = el.value;
+  const nomes = [ ...new Set(state.rows.filter(isReal).filter(passaFiltrosExcetoBanco).map(r => norm(r.banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  el.innerHTML = '<option value="">Todos</option>' + nomes.map(v => `<option>${escapeHtml(v)}</option>`).join("");
+  el.value = atual && nomes.includes(atual) ? atual : "";
+}
+
 function aplicarFiltros() {
-  const q = lower($("fBusca").value), banco = $("fBanco").value, st = $("fStatus").value, tipo = $("fTipo").value, sup = $("fSuper").value, supv = $("fSupervisor").value, ger = $("fGerente").value;
+  montarFiltroBancos();
+  const banco = $("fBanco").value;
   state.aguardandoBanco = false;
   state.filtered = state.rows.filter(isReal).filter(r => {
     if (banco && norm(r.banco) !== banco) return false;
-    if (st && norm(r.status).toUpperCase() !== st) return false;
-    if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
-    if (sup && String(superintendenteDoSub(r)) !== sup) return false;
-    if (supv && String(supervisorDoSub(r)) !== supv) return false;
-    if (ger && String(r.gerente_id) !== ger) return false;
-    if (q) {
-      const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
-      if (!blob.includes(q)) return false;
-    }
-    return true;
+    return passaFiltrosExcetoBanco(r);
   });
   ordenarFiltrados();
   state.page = 1;
