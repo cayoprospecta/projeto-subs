@@ -1,0 +1,5 @@
+# Exports do banco e artefatos de migração (dados, não fazem parte do app)
+*_rows.csv
+mapa_gerente_comercial.csv
+migracao_resolucao.csv
+migracao_*.sql

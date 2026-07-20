@@ -10,6 +10,9 @@ const CONFIG = {
   TABLE_MENSAGENS: "mensagem",
   TABLE_PRODUCAO: "producao_mensal",
   TABLE_PRODUCAO_CONVENIO: "producao_convenio",
+  TABLE_SUPERINTENDENTES: "superintendentes",
+  TABLE_SUPERVISORES: "supervisores",
+  TABLE_GERENTES: "gerentes_comerciais",
   AUTH_EMAIL_DOMAIN: "prospecta.local",
   CONSULTOR_EMAIL: "consultor@prospecta.local",
   PAGE_SIZE: 25
@@ -23,8 +26,20 @@ const state = {
     consultor: null
   },
   _refreshTimers: {},
+  _persist: {
+    gestor: false,
+    consultor: false
+  },
+  _ultimaAtividade: Date.now(),
   rows: [],
   empresas: [],
+  superintendentes: [],
+  supervisores: [],
+  gerentes: [],
+  colabCarregado: false,
+  colabErro: null,
+  colabExpandTudo: false,
+  colabEdit: null,
   bancos: [],
   bancoVinculos: [],
   filtered: [],
@@ -79,6 +94,10 @@ const REST_PRODUCAO_CONVENIO = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TA
 
 const REST_MSG = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_MENSAGENS}`;
 
+const REST_SUPERINTENDENTES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_SUPERINTENDENTES}`;
+const REST_SUPERVISORES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_SUPERVISORES}`;
+const REST_GERENTES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_GERENTES}`;
+
 const $ = id => document.getElementById(id);
 
 const norm = v => (v == null ? "" : String(v)).trim();
@@ -86,6 +105,41 @@ const norm = v => (v == null ? "" : String(v)).trim();
 const lower = v => norm(v).toLowerCase();
 
 const maiusc = v => norm(v).toLocaleUpperCase("pt-BR");
+
+// Resolução id -> registro/nome dos colaboradores (tabelas superintendentes /
+// supervisores / gerentes_comerciais). O vínculo do sub é por id; o nome é
+// sempre lido daqui, nunca mais de coluna de texto.
+const superintendenteById = id => id != null ? state.superintendentes.find(s => s.id === +id) || null : null;
+const supervisorById = id => id != null ? state.supervisores.find(s => s.id === +id) || null : null;
+const gerenteById = id => id != null ? state.gerentes.find(g => g.id === +id) || null : null;
+const nomeSuperintendente = id => {
+  const s = superintendenteById(id);
+  return s ? norm(s.nome) : "";
+};
+const nomeSupervisor = id => {
+  const s = supervisorById(id);
+  return s ? norm(s.nome) : "";
+};
+const nomeGerente = id => {
+  const g = gerenteById(id);
+  return g ? norm(g.nome) : "";
+};
+
+// Hierarquia EFETIVA do sub. Quando há gerente, ele é a fonte da verdade —
+// assim, mover um gerente de supervisor na aba Colaboradores reflete na hora
+// em todo o app, sem precisar atualizar linha nenhuma de substabelecidos.
+// Sem gerente, usa o supervisor gravado (e o superintendente vem dele).
+const supervisorDoSub = r => {
+  const g = gerenteById(r.gerente_id);
+  return g ? g.supervisor_id : r.supervisor_id;
+};
+
+const superintendenteDoSub = r => {
+  const g = gerenteById(r.gerente_id);
+  if (g) return g.superintendente_id;
+  const sv = supervisorById(r.supervisor_id);
+  return sv ? sv.superintendente_id : r.superintendente_id;
+};
 
 const LS_PENDENTES = "prospecta_duvidas_pendentes";
 
@@ -255,23 +309,33 @@ function loginParaEmail(login) {
   return login.includes("@") ? login : `${login}@${CONFIG.AUTH_EMAIL_DOMAIN}`;
 }
 
+// Sessão "persistente" (checkbox "Manter conectado") vai para o localStorage e
+// sobrevive ao fechar o navegador. Sessão temporária fica no sessionStorage:
+// some ao fechar a aba e ainda expira por inatividade (ver INATIVIDADE_MS).
 function salvarSessao(slot, session) {
   state.sessions[slot] = session;
+  const alvo = state._persist[slot] ? localStorage : sessionStorage;
+  const outro = state._persist[slot] ? sessionStorage : localStorage;
   try {
-    sessionStorage.setItem(SESSION_KEYS[slot], JSON.stringify(session));
+    alvo.setItem(SESSION_KEYS[slot], JSON.stringify(session));
+    outro.removeItem(SESSION_KEYS[slot]);
   } catch (e) {}
   agendarRefreshSessao(slot);
+  registrarAtividade();
 }
 
 function limparSessao(slot) {
   state.sessions[slot] = null;
+  state._persist[slot] = false;
   try {
     sessionStorage.removeItem(SESSION_KEYS[slot]);
+    localStorage.removeItem(SESSION_KEYS[slot]);
   } catch (e) {}
   if (state._refreshTimers[slot]) clearTimeout(state._refreshTimers[slot]);
 }
 
-async function authLogin(slot, login, senha) {
+async function authLogin(slot, login, senha, persistente) {
+  state._persist[slot] = !!persistente;
   try {
     const res = await fetch(`${AUTH_URL()}/token?grant_type=password`, {
       method: "POST",
@@ -341,6 +405,33 @@ function agendarRefreshSessao(slot) {
   state._refreshTimers[slot] = setTimeout(() => authRefresh(slot), ms);
 }
 
+// Logout automático por inatividade — só vale para a sessão do gestor quando
+// ela NÃO é persistente ("Manter conectado" desmarcado). Sessões persistentes
+// (localStorage) nunca expiram por inatividade.
+const INATIVIDADE_MS = 20 * 60 * 1e3;
+
+function sessaoGestorTemporaria() {
+  return state.gestor && !state._persist.gestor;
+}
+
+function registrarAtividade() {
+  state._ultimaAtividade = Date.now();
+}
+
+function checarInatividade() {
+  if (sessaoGestorTemporaria() && Date.now() - state._ultimaAtividade > INATIVIDADE_MS) {
+    sairGestor();
+    toast("Sessão encerrada por inatividade. Faça login novamente.", "err");
+  }
+}
+
+function iniciarMonitorInatividade() {
+  [ "mousemove", "mousedown", "keydown", "scroll", "touchstart" ].forEach(ev => window.addEventListener(ev, registrarAtividade, {
+    passive: true
+  }));
+  setInterval(checarInatividade, 3e4);
+}
+
 async function authLogout(slot) {
   const sess = state.sessions[slot];
   if (sess && sess.access_token) {
@@ -359,11 +450,18 @@ async function authLogout(slot) {
 }
 
 async function restaurarSessao(slot) {
-  let saved = null;
+  let saved = null, persistente = false;
   try {
-    saved = JSON.parse(sessionStorage.getItem(SESSION_KEYS[slot]) || "null");
+    const doLocal = localStorage.getItem(SESSION_KEYS[slot]);
+    if (doLocal) {
+      saved = JSON.parse(doLocal);
+      persistente = true;
+    } else {
+      saved = JSON.parse(sessionStorage.getItem(SESSION_KEYS[slot]) || "null");
+    }
   } catch (e) {}
   if (!saved) return null;
+  state._persist[slot] = persistente;
   state.sessions[slot] = saved;
   if (saved.expires_at - Date.now() < 6e4) {
     const ok = await authRefresh(slot);
@@ -436,6 +534,10 @@ async function carregar() {
     } else {
       console.warn("banco_vinculos:", resBancoVinc.status, await resBancoVinc.text());
     }
+    // Colaboradores (superintendentes/supervisores/gerentes) são necessários
+    // para traduzir os ids em nomes na tabela, ficha e filtros — inclusive no
+    // modo consulta. Carrega antes de montar os filtros.
+    await carregarColaboradores();
     montarFiltros();
     aplicarFiltros();
     if (!state.gestor && $("viewBancosConsulta").style.display !== "none") renderBancosConsulta();
@@ -485,38 +587,20 @@ function montarFiltros() {
   const bancosCadastrados = [ ...new Set(state.bancos.map(b => norm(b.nome_banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   fill("fBanco", bancosCadastrados);
   fill("fTipo", distintos("tipo_cadastro"));
-  fill("fSuper", distintos("superintendente"));
-  fill("fSupervisor", distintos("supervisor"));
-  fill("fGerente", distintos("gerente"));
+  // Filtros de equipe agora por id (value=id, label=nome), lidos das tabelas novas
+  fillPorId("fSuper", state.superintendentes);
+  fillPorId("fSupervisor", state.supervisores);
+  fillPorId("fGerente", state.gerentes);
   preencherBancosForm();
-  preencherEquipeForm();
 }
 
-const CAMPOS_EQUIPE = [ [ "f_superintendente", "superintendente" ], [ "f_supervisor", "supervisor" ], [ "f_gerente", "gerente" ] ];
-
-function preencherEquipeForm() {
-  CAMPOS_EQUIPE.forEach(([ selId, coluna ]) => {
-    const sel = $(selId);
-    if (!sel) return;
-    const atual = sel.value;
-    const nomes = distintos(coluna);
-    sel.innerHTML = '<option value="">Selecione…</option>' + nomes.map(v => `<option>${escapeHtml(v)}</option>`).join("");
-    if (atual && nomes.includes(atual)) sel.value = atual;
-  });
-}
-
-function setEquipe(selId, val) {
-  const sel = $(selId), v = norm(val);
-  if (!sel) return;
-  sel.querySelectorAll("option[data-legacy]").forEach(o => o.remove());
-  if (v && ![ ...sel.options ].some(o => o.value === v)) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = v + " (atual)";
-    o.dataset.legacy = "1";
-    sel.appendChild(o);
-  }
-  sel.value = v;
+function fillPorId(sel, lista) {
+  const el = $(sel);
+  if (!el) return;
+  const atual = el.value;
+  const ord = lista.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome), "pt-BR"));
+  el.innerHTML = '<option value="">Todos</option>' + ord.map(x => `<option value="${x.id}">${escapeHtml(norm(x.nome))}</option>`).join("");
+  if (atual && ord.some(x => String(x.id) === atual)) el.value = atual;
 }
 
 function preencherBancosForm() {
@@ -526,6 +610,28 @@ function preencherBancosForm() {
   const nomes = [ ...new Set(state.bancos.filter(b => norm(b.status).toUpperCase() !== "INATIVO").map(b => norm(b.nome_banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   sel.innerHTML = '<option value="">Selecione…</option>' + nomes.map(v => `<option>${escapeHtml(v)}</option>`).join("");
   if (atual && nomes.includes(atual)) sel.value = atual;
+}
+
+const ordNome = lista => lista.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome), "pt-BR"));
+
+function montarFormSuperSel(sel) {
+  const el = $("f_superintendente");
+  el.innerHTML = '<option value="">Selecione…</option>' + ordNome(state.superintendentes).map(s => `<option value="${s.id}">${escapeHtml(norm(s.nome))}</option>`).join("");
+  if (sel != null) el.value = String(sel);
+}
+
+function montarFormSupervSel(superId, sel) {
+  const el = $("f_supervisor");
+  const svs = ordNome(state.supervisores.filter(s => String(s.superintendente_id) === String(superId)));
+  el.innerHTML = '<option value="">— (sem supervisor)</option>' + svs.map(s => `<option value="${s.id}">${escapeHtml(norm(s.nome))}</option>`).join("");
+  if (sel != null) el.value = String(sel);
+}
+
+function montarFormGerenteSel(superId, sel) {
+  const el = $("f_gerente");
+  const gs = ordNome(state.gerentes.filter(g => String(g.superintendente_id) === String(superId)));
+  el.innerHTML = '<option value="">— (sem gerente)</option>' + gs.map(g => `<option value="${g.id}">${escapeHtml(norm(g.nome))}</option>`).join("");
+  if (sel != null) el.value = String(sel);
 }
 
 function aplicarToggleFiltros() {
@@ -542,9 +648,9 @@ function aplicarFiltros() {
     if (banco && norm(r.banco) !== banco) return false;
     if (st && norm(r.status).toUpperCase() !== st) return false;
     if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
-    if (sup && norm(r.superintendente) !== sup) return false;
-    if (supv && norm(r.supervisor) !== supv) return false;
-    if (ger && norm(r.gerente) !== ger) return false;
+    if (sup && String(superintendenteDoSub(r)) !== sup) return false;
+    if (supv && String(supervisorDoSub(r)) !== supv) return false;
+    if (ger && String(r.gerente_id) !== ger) return false;
     if (q) {
       const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
       if (!blob.includes(q)) return false;
@@ -760,7 +866,7 @@ function renderPainel() {
   const inativos = reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   const pendentes = reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
   const andamento = reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
-  const incompFn = r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
+  const incompFn = r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
   const incompativeis = reais.filter(incompFn);
   const filtro = state.painelFiltro || "TODOS";
   let base = reais;
@@ -796,7 +902,7 @@ function painelBase() {
   if (f === "INATIVO") return reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   if (f === "PENDENTE") return reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
   if (f === "EM_ANDAMENTO") return reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
-  if (f === "INCOMPATIVEL") return reais.filter(r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
+  if (f === "INCOMPATIVEL") return reais.filter(r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
   return reais;
 }
 
@@ -863,7 +969,7 @@ function camposFichaSub(r) {
   return {
     identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", emp ? norm(emp.razao_social) : "" ], [ "CNPJ do grupo", norm(r[CONFIG.COL_CNPJ_GRUPO]) ] ],
     vinculo: [ [ "Banco", norm(r.banco) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
-    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Superintendente", norm(r.superintendente) ], [ "Supervisor", norm(r.supervisor) ], [ "Gerente", norm(r.gerente) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
+    gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Superintendente", nomeSuperintendente(superintendenteDoSub(r)) ], [ "Supervisor", nomeSupervisor(supervisorDoSub(r)) ], [ "Gerente", nomeGerente(r.gerente_id) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
   };
 }
 
@@ -1317,7 +1423,7 @@ async function exportarDetalhePDF() {
       doc.autoTable(Object.assign({}, tabelaBase, {
         startY: yFim + 7,
         head: [ [ "#", "Nome do sub", "CNPJ", "Tipo", "Cód. sub", "Gerente", "Status" ] ],
-        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", norm(r.cnpj_subs) || "—", norm(r.tipo_cadastro) || "—", norm(r.cod_substabelecido) || "—", norm(r.gerente) || "—", norm(r.status).toUpperCase() || "—" ]),
+        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", norm(r.cnpj_subs) || "—", norm(r.tipo_cadastro) || "—", norm(r.cod_substabelecido) || "—", nomeGerente(r.gerente_id) || "—", norm(r.status).toUpperCase() || "—" ]),
         columnStyles: {
           0: {
             cellWidth: 9,
@@ -1491,7 +1597,7 @@ function renderKPIs() {
   const inativos = reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
   const pct = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
   const bancos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
-  const gerentes = new Set(ativos.map(r => norm(r.gerente)).filter(Boolean));
+  const gerentes = new Set(ativos.map(r => r.gerente_id).filter(x => x != null));
   const porBanco = {};
   ativos.forEach(r => {
     const b = norm(r.banco) || "—";
@@ -1499,7 +1605,7 @@ function renderKPIs() {
   });
   const top = Object.entries(porBanco).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxTop = top.length ? top[0][1] : 1;
-  const incompletos = reais.filter(r => !norm(r.gerente) || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
+  const incompletos = reais.filter(r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
   $("kpis").innerHTML = `\n    <div class="kpi"><div class="k-label">Ativos</div><div class="k-val cyan">${ativos.length}</div><div class="k-sub">${pct}% do total</div></div>\n    <div class="kpi"><div class="k-label">Inativos</div><div class="k-val red">${inativos.length}</div><div class="k-sub">de ${reais.length} cadastros</div></div>\n    <div class="kpi"><div class="k-label">Bancos ativos</div><div class="k-val">${bancos.size}</div><div class="k-sub">com ao menos 1 sub</div></div>\n    <div class="kpi"><div class="k-label">Gerentes</div><div class="k-val">${gerentes.size}</div><div class="k-sub">carteiras distintas</div></div>\n    <div class="kpi"><div class="k-label">Cadastros incompletos</div><div class="k-val" style="color:var(--warn)">${incompletos}</div><div class="k-sub">sem gerente / código / status</div></div>\n    <div class="kpi wide">\n      <div class="k-label">Top bancos por ativos</div>\n      <div class="k-bars">\n        ${top.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxTop * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("")}\n      </div>\n    </div>`;
 }
 
@@ -1552,10 +1658,20 @@ function abrirForm(id) {
   set("f_codsub", r.cod_substabelecido);
   set("f_codparc", r.cod_parceiro);
   set("f_resp", r.responsavel_empresa);
-  preencherEquipeForm();
-  setEquipe("f_superintendente", r.superintendente);
-  setEquipe("f_supervisor", r.supervisor);
-  setEquipe("f_gerente", r.gerente);
+  // Equipe por id, com cascata, usando a hierarquia efetiva (derivada do gerente
+  // quando houver), para o formulário nunca abrir com um vínculo desatualizado.
+  const superId = superintendenteDoSub(r) || "";
+  montarFormSuperSel(superId || null);
+  montarFormSupervSel(superId, supervisorDoSub(r) || null);
+  montarFormGerenteSel(superId, r.gerente_id || null);
+  const ref = $("gerenteRefHint");
+  if (ref) {
+    const gc = norm(r.gerente_comercial);
+    if (!r.gerente_id && gc) {
+      ref.textContent = `Referência (dado antigo): ${gc}`;
+      ref.style.display = "";
+    } else ref.style.display = "none";
+  }
   set("f_comissao", r.comissao);
   atualizarObrigatoriedadeComissao();
   $("formSave").textContent = id ? "Salvar" : "Avançar";
@@ -1576,6 +1692,21 @@ function payloadDoForm() {
     const v = g(el);
     return v === null ? null : maiusc(v);
   };
+  const idSel = el => {
+    const v = $(el).value;
+    return v ? +v : null;
+  };
+  // Vínculos por id, mantidos coerentes: se há gerente, super/supervisor vêm
+  // dele; se só há supervisor, o superintendente vem do supervisor.
+  let gerId = idSel("f_gerente"), supId = idSel("f_supervisor"), superId = idSel("f_superintendente");
+  const g2 = gerenteById(gerId);
+  if (g2) {
+    superId = g2.superintendente_id;
+    supId = g2.supervisor_id;
+  } else {
+    const sv2 = supervisorById(supId);
+    if (sv2) superId = sv2.superintendente_id;
+  }
   return {
     nome_subs: G("f_sub"),
     cnpj_subs: g("f_cnpj_subs"),
@@ -1586,22 +1717,21 @@ function payloadDoForm() {
     cod_substabelecido: G("f_codsub"),
     cod_parceiro: G("f_codparc"),
     responsavel_empresa: G("f_resp"),
-    superintendente: G("f_superintendente"),
-    supervisor: G("f_supervisor"),
-    gerente: G("f_gerente"),
+    superintendente_id: superId,
+    supervisor_id: supId,
+    gerente_id: gerId,
     comissao: G("f_comissao")
   };
 }
 
 async function salvarForm() {
-  const nomeSub = $("f_sub").value.trim(), cnpjSub = $("f_cnpj_subs").value.trim(), razao = $("f_razao").value.trim(), banco = $("f_banco").value.trim(), tipo = $("f_tipo").value.trim(), gerente = $("f_gerente").value.trim(), comissao = $("f_comissao").value.trim();
+  const nomeSub = $("f_sub").value.trim(), cnpjSub = $("f_cnpj_subs").value.trim(), razao = $("f_razao").value.trim(), banco = $("f_banco").value.trim(), tipo = $("f_tipo").value.trim(), comissao = $("f_comissao").value.trim();
   const faltando = [];
   if (!nomeSub) faltando.push("Nome do sub");
   if (!cnpjSub) faltando.push("CNPJ do sub");
   if (!razao) faltando.push("Empresa (razão)");
   if (!banco) faltando.push("Banco");
   if (!tipo) faltando.push("Tipo de cadastro");
-  if (!gerente) faltando.push("Gerente");
   if (tipo === "SUBSTABELECIDO" && !comissao) faltando.push("Comissão");
   if (faltando.length) {
     toast("Obrigatórios: " + faltando.join(", "), "err");
@@ -2019,6 +2149,7 @@ function entrarGestor() {
   aplicarFiltros();
   checarAlertas();
   carregarDuvidas();
+  carregarColaboradores();
   toast(`Bem-vindo(a), ${escapeHtml(state.gestorNome || "")}`, "ok");
 }
 
@@ -2048,6 +2179,10 @@ function sairGestor() {
   switchTab("welcome");
   aplicarFiltros();
   verificarRespostas();
+  state.superintendentes = [];
+  state.supervisores = [];
+  state.gerentes = [];
+  state.colabCarregado = false;
 }
 
 function soDigitos(s) {
@@ -3386,12 +3521,339 @@ async function verificarAcesso() {
   }
 }
 
+async function carregarColaboradores(force) {
+  if (state.colabCarregado && !force) return;
+  state.colabErro = null;
+  try {
+    const [ rSup, rSv, rGer ] = await Promise.all([ fetch(`${REST_SUPERINTENDENTES()}?select=*&order=nome.asc`, {
+      headers: H()
+    }), fetch(`${REST_SUPERVISORES()}?select=*&order=nome.asc`, {
+      headers: H()
+    }), fetch(`${REST_GERENTES()}?select=*&order=nome.asc`, {
+      headers: H()
+    }) ]);
+    if (!rSup.ok) throw new Error(`superintendentes HTTP ${rSup.status} — ${await rSup.text()}`);
+    if (!rSv.ok) throw new Error(`supervisores HTTP ${rSv.status} — ${await rSv.text()}`);
+    if (!rGer.ok) throw new Error(`gerentes HTTP ${rGer.status} — ${await rGer.text()}`);
+    state.superintendentes = await rSup.json();
+    state.supervisores = await rSv.json();
+    state.gerentes = await rGer.json();
+    state.colabCarregado = true;
+    // 200 com lista vazia = tabela existe mas nada voltou; quase sempre RLS
+    // sem policy de SELECT ou falta de GRANT para o papel autenticado.
+    console.info("Colaboradores carregados:", {
+      superintendentes: state.superintendentes.length,
+      supervisores: state.supervisores.length,
+      gerentes: state.gerentes.length
+    });
+  } catch (e) {
+    console.error(e);
+    state.colabErro = e.message || String(e);
+    toast("Erro ao carregar colaboradores. Veja o console (F12).", "err");
+  }
+}
+
+const colabNomeCmp = (a, b) => norm(a.nome).localeCompare(norm(b.nome), "pt-BR");
+
+const colabBlob = g => [ g.nome, g.codigo_parceiro, g.estado, g.email, g.fone_celular, g.cpf_cnpj ].map(lower).join(" ");
+
+function colabActs(tipo, id) {
+  if (!state.gestor) return "";
+  return `<span class="col-acts"><button class="col-act" data-coledit="${tipo}:${id}" title="Editar" aria-label="Editar">&#9998;</button><button class="col-act del" data-coldel="${tipo}:${id}" title="Excluir" aria-label="Excluir">&times;</button></span>`;
+}
+
+function colabGerenteRow(g) {
+  const email = norm(g.email) ? `<a href="mailto:${escapeHtml(norm(g.email))}">${escapeHtml(norm(g.email))}</a>` : "—";
+  return `<div class="col-ger">\n    <span class="cg-nome">${escapeHtml(norm(g.nome) || "—")}</span>\n    <span class="cg-cod mono">${escapeHtml(norm(g.codigo_parceiro) || "—")}</span>\n    <span class="cg-uf">${escapeHtml(norm(g.estado) || "—")}</span>\n    <span class="cg-fone mono">${linkWhats(g.fone_celular)}</span>\n    <span class="cg-email">${email}</span>\n    ${colabActs("ger", g.id)}\n  </div>`;
+}
+
+function renderColaboradores() {
+  const nS = state.superintendentes.length, nV = state.supervisores.length, nG = state.gerentes.length;
+  $("colabCount").innerHTML = `<b>${nS}</b> superintendente${nS !== 1 ? "s" : ""} · <b>${nV}</b> supervisor${nV !== 1 ? "es" : ""} · <b>${nG}</b> gerente${nG !== 1 ? "s" : ""}`;
+  // Estados especiais antes de montar a árvore: erro, carregando, ou vazio.
+  if (state.colabErro) {
+    $("colabEmpty").style.display = "none";
+    $("colabTree").innerHTML = `<div class="col-vazio" style="padding:22px;line-height:1.6">Não foi possível carregar. Detalhe técnico:<br><code style="font-size:12px">${escapeHtml(state.colabErro)}</code></div>`;
+    return;
+  }
+  if (!state.colabCarregado) {
+    $("colabEmpty").style.display = "none";
+    $("colabTree").innerHTML = '<div class="col-vazio" style="padding:22px">Carregando…</div>';
+    return;
+  }
+  const q = lower($("colabBusca").value.trim());
+  const abrir = !!q || state.colabExpandTudo;
+  const supers = state.superintendentes.slice().sort(colabNomeCmp);
+  const svBySuper = {}, gerBySv = {}, gerDiretoBySuper = {}, totalGerBySuper = {};
+  state.supervisores.forEach(sv => (svBySuper[sv.superintendente_id] = svBySuper[sv.superintendente_id] || []).push(sv));
+  state.gerentes.forEach(g => {
+    totalGerBySuper[g.superintendente_id] = (totalGerBySuper[g.superintendente_id] || 0) + 1;
+    if (g.supervisor_id != null) (gerBySv[g.supervisor_id] = gerBySv[g.supervisor_id] || []).push(g); else (gerDiretoBySuper[g.superintendente_id] = gerDiretoBySuper[g.superintendente_id] || []).push(g);
+  });
+  const temDados = state.superintendentes.length || state.supervisores.length || state.gerentes.length;
+  $("colabEmpty").style.display = temDados ? "none" : "block";
+  const blocos = supers.map(sup => {
+    const superMatch = q && lower(sup.nome).includes(q);
+    const svs = (svBySuper[sup.id] || []).slice().sort(colabNomeCmp);
+    const svHtml = svs.map(sv => {
+      const svMatch = q && lower(sv.nome).includes(q);
+      const gers = (gerBySv[sv.id] || []).slice().sort(colabNomeCmp);
+      const vis = !q || superMatch || svMatch ? gers : gers.filter(g => colabBlob(g).includes(q));
+      if (q && !superMatch && !svMatch && !vis.length) return null;
+      return `<details class="col-superv"${abrir ? " open" : ""}>\n        <summary><span class="cs-nome">${escapeHtml(norm(sv.nome))}</span><span class="cs-meta">${gers.length} gerente${gers.length !== 1 ? "s" : ""}</span>${colabActs("superv", sv.id)}</summary>\n        <div class="col-gers">${vis.length ? vis.map(colabGerenteRow).join("") : '<div class="col-vazio">Nenhum gerente vinculado.</div>'}</div>\n      </details>`;
+    }).filter(Boolean);
+    const diretos = (gerDiretoBySuper[sup.id] || []).slice().sort(colabNomeCmp);
+    const visDiretos = !q || superMatch ? diretos : diretos.filter(g => colabBlob(g).includes(q));
+    const diretosHtml = visDiretos.length ? `<details class="col-superv sem-sup"${abrir ? " open" : ""}>\n      <summary><span class="cs-nome">Sem supervisor</span><span class="cs-meta">${visDiretos.length} gerente${visDiretos.length !== 1 ? "s" : ""}</span></summary>\n      <div class="col-gers">${visDiretos.map(colabGerenteRow).join("")}</div>\n    </details>` : "";
+    if (q && !superMatch && !svHtml.length && !visDiretos.length) return null;
+    const nSv = svs.length, nGer = totalGerBySuper[sup.id] || 0;
+    const corpo = svHtml.join("") + diretosHtml || '<div class="col-vazio">Nenhum supervisor ou gerente vinculado.</div>';
+    return `<details class="col-super"${abrir ? " open" : ""}>\n      <summary>\n        <span class="csup-nome">${escapeHtml(norm(sup.nome))}</span>\n        <span class="csup-meta">${nSv} supervisor${nSv !== 1 ? "es" : ""} · ${nGer} gerente${nGer !== 1 ? "s" : ""}</span>\n        ${colabActs("super", sup.id)}\n      </summary>\n      <div class="col-super-body">${corpo}</div>\n    </details>`;
+  }).filter(Boolean);
+  if (temDados) $("colabTree").innerHTML = blocos.join("") || '<div class="col-vazio" style="padding:22px">Nada encontrado para a busca.</div>'; else $("colabTree").innerHTML = "";
+}
+
+const COLAB_TIPOS = {
+  super: "Superintendente",
+  superv: "Supervisor",
+  ger: "Gerente comercial"
+};
+
+const COLAB_REST = {
+  super: REST_SUPERINTENDENTES,
+  superv: REST_SUPERVISORES,
+  ger: REST_GERENTES
+};
+
+const COLAB_TABELA = {
+  super: CONFIG.TABLE_SUPERINTENDENTES,
+  superv: CONFIG.TABLE_SUPERVISORES,
+  ger: CONFIG.TABLE_GERENTES
+};
+
+function montarColabSuperSel(sel) {
+  const supers = state.superintendentes.slice().sort(colabNomeCmp);
+  $("colabSuperSel").innerHTML = '<option value="">Selecione…</option>' + supers.map(s => `<option value="${s.id}">${escapeHtml(norm(s.nome))}</option>`).join("");
+  if (sel != null) $("colabSuperSel").value = String(sel);
+}
+
+function montarColabSupervSel(superId, sel) {
+  const svs = state.supervisores.filter(sv => String(sv.superintendente_id) === String(superId)).sort(colabNomeCmp);
+  $("colabSupervSel").innerHTML = '<option value="">Sem supervisor (direto ao superintendente)</option>' + svs.map(sv => `<option value="${sv.id}">${escapeHtml(norm(sv.nome))}</option>`).join("");
+  if (sel != null) $("colabSupervSel").value = String(sel);
+}
+
+function atualizarColabCampos() {
+  const t = $("colabTipo").value;
+  $("colabSuperField").style.display = t === "superv" || t === "ger" ? "" : "none";
+  $("colabSupervField").style.display = t === "ger" ? "" : "none";
+  [ "colabCodigoField", "colabCpfField", "colabEstadoField", "colabFoneField", "colabEmailField" ].forEach(id => $(id).style.display = t === "ger" ? "" : "none");
+}
+
+function abrirColabForm(tipo, id) {
+  if (!state.gestor) return;
+  state.colabEdit = id ? {
+    tipo: tipo,
+    id: id
+  } : null;
+  [ "colabNome", "colabCodigo", "colabCpf", "colabFone", "colabEmail" ].forEach(k => $(k).value = "");
+  $("colabEstado").value = "";
+  $("colabHint").textContent = "";
+  $("colabHint").className = "hint";
+  $("colabTipo").value = tipo || "super";
+  $("colabTipo").disabled = !!id;
+  $("colabTipoField").style.display = id ? "none" : "";
+  montarColabSuperSel();
+  montarColabSupervSel("");
+  atualizarColabCampos();
+  if (id) {
+    if (tipo === "super") {
+      const r = state.superintendentes.find(x => x.id === id);
+      if (r) $("colabNome").value = norm(r.nome);
+    } else if (tipo === "superv") {
+      const r = state.supervisores.find(x => x.id === id);
+      if (r) {
+        $("colabNome").value = norm(r.nome);
+        montarColabSuperSel(r.superintendente_id);
+      }
+    } else if (tipo === "ger") {
+      const r = state.gerentes.find(x => x.id === id);
+      if (r) {
+        $("colabNome").value = norm(r.nome);
+        $("colabCodigo").value = norm(r.codigo_parceiro);
+        $("colabCpf").value = norm(r.cpf_cnpj);
+        $("colabEstado").value = norm(r.estado);
+        $("colabFone").value = mascaraTel(r.fone_celular);
+        $("colabEmail").value = norm(r.email);
+        montarColabSuperSel(r.superintendente_id);
+        montarColabSupervSel(r.superintendente_id, r.supervisor_id);
+      }
+    }
+  }
+  $("colabModalTitle").textContent = id ? `Editar ${COLAB_TIPOS[tipo].toLowerCase()}` : "Novo colaborador";
+  $("colabOverlay").classList.add("show");
+  $("colabNome").focus();
+}
+
+async function salvarColab() {
+  if (!state.gestor) return;
+  const t = $("colabTipo").value;
+  const nome = $("colabNome").value.trim();
+  const hint = $("colabHint");
+  const erro = msg => hint.innerHTML = `<span class="warn">${escapeHtml(msg)}</span>`;
+  hint.className = "hint";
+  if (!nome) return erro("Informe o nome.");
+  let body;
+  if (t === "super") {
+    body = {
+      nome: maiusc(nome)
+    };
+  } else if (t === "superv") {
+    const superId = $("colabSuperSel").value;
+    if (!superId) return erro("Selecione o superintendente.");
+    body = {
+      nome: maiusc(nome),
+      superintendente_id: +superId
+    };
+  } else {
+    const superId = $("colabSuperSel").value;
+    const codigo = $("colabCodigo").value.trim();
+    const email = $("colabEmail").value.trim();
+    if (!codigo) return erro("Informe o código do parceiro.");
+    if (!superId) return erro("Selecione o superintendente.");
+    if (email && !validaEmail(email)) return erro("E-mail inválido.");
+    const supervId = $("colabSupervSel").value;
+    body = {
+      codigo_parceiro: codigo,
+      nome: maiusc(nome),
+      cpf_cnpj: $("colabCpf").value.trim() || null,
+      estado: $("colabEstado").value || null,
+      fone_celular: soDigitos($("colabFone").value) || null,
+      email: email || null,
+      superintendente_id: +superId,
+      supervisor_id: supervId ? +supervId : null
+    };
+  }
+  const editing = state.colabEdit;
+  const btn = $("colabSalvar");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.innerHTML = '<span class="spin"></span> Salvando';
+  try {
+    const url = editing ? `${COLAB_REST[t]()}?id=eq.${editing.id}` : COLAB_REST[t]();
+    const res = await fetch(url, {
+      method: editing ? "PATCH" : "POST",
+      headers: {
+        ...H(),
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      if (/duplicate key|unique/i.test(txt)) throw new Error(t === "ger" ? "Já existe um colaborador com esse código de parceiro." : "Já existe um colaborador com esse nome.");
+      throw new Error(`HTTP ${res.status} — ${txt}`);
+    }
+    const saved = (await res.json())[0];
+    if (!saved) throw new Error("Nada foi salvo. Verifique a policy de INSERT/UPDATE no Supabase.");
+    await carregarColaboradores(true);
+    renderColaboradores();
+    // Nome pode ter mudado: reflete nos filtros e nas telas que exibem o vínculo.
+    montarFiltros();
+    aplicarFiltros();
+    $("colabOverlay").classList.remove("show");
+    logHist(editing ? "editou_colaborador" : "cadastrou_colaborador", COLAB_TABELA[t], saved.id, `${editing ? "Editou" : "Cadastrou"} ${COLAB_TIPOS[t].toLowerCase()} ${norm(saved.nome)}`);
+    toast(editing ? "Colaborador atualizado" : "Colaborador cadastrado", "ok");
+  } catch (e) {
+    console.error(e);
+    erro(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function excluirColab(tipo, id) {
+  if (!state.gestor) return;
+  let r, aviso;
+  // Impacto nos substabelecidos: as FKs são "on delete set null", então apagar
+  // um colaborador desvincula os subs em silêncio. Avisa antes.
+  const plural = (n, s, p) => `${n} substabelecido${n === 1 ? "" : "s"} ${n === 1 ? s : p}`;
+  if (tipo === "super") {
+    r = state.superintendentes.find(x => x.id === id);
+    if (!r) return;
+    const nSv = state.supervisores.filter(s => s.superintendente_id === id).length;
+    const nGer = state.gerentes.filter(g => g.superintendente_id === id).length;
+    if (nSv || nGer) {
+      toast(`Não é possível excluir: há ${nSv} supervisor(es) e ${nGer} gerente(s) vinculados. Realoque-os ou exclua-os antes.`, "err");
+      return;
+    }
+    const nSubs = state.rows.filter(x => x.superintendente_id === id).length;
+    aviso = `Excluir o superintendente "${norm(r.nome)}"?` + (nSubs ? `\n\n${plural(nSubs, "ficará", "ficarão")} sem superintendente.` : "");
+  } else if (tipo === "superv") {
+    r = state.supervisores.find(x => x.id === id);
+    if (!r) return;
+    const nGer = state.gerentes.filter(g => g.supervisor_id === id).length;
+    const nSubs = state.rows.filter(x => x.supervisor_id === id).length;
+    const partes = [];
+    if (nGer) partes.push(`${nGer} gerente${nGer === 1 ? "" : "s"} ${nGer === 1 ? "ficará" : "ficarão"} sem supervisor (não serão apagados).`);
+    if (nSubs) partes.push(`${plural(nSubs, "perderá", "perderão")} o vínculo com este supervisor.`);
+    aviso = `Excluir o supervisor "${norm(r.nome)}"?` + (partes.length ? "\n\n" + partes.join("\n") : "");
+  } else {
+    r = state.gerentes.find(x => x.id === id);
+    if (!r) return;
+    const nSubs = state.rows.filter(x => x.gerente_id === id).length;
+    aviso = `Excluir o gerente "${norm(r.nome)}" (código ${norm(r.codigo_parceiro)})?` + (nSubs ? `\n\n${plural(nSubs, "ficará", "ficarão")} sem gerente e ${nSubs === 1 ? "precisará" : "precisarão"} ser reatribuído${nSubs === 1 ? "" : "s"}.` : "");
+  }
+  if (!confirm(aviso)) return;
+  try {
+    const res = await fetch(`${COLAB_REST[tipo]()}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: {
+        ...H(),
+        Prefer: "return=representation"
+      }
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      if (/foreign key|violates|restrict/i.test(txt)) throw new Error("Há registros vinculados que impedem a exclusão.");
+      throw new Error(`HTTP ${res.status} — ${txt}`);
+    }
+    const del = await res.json();
+    if (!Array.isArray(del) || !del.length) {
+      toast("Nada foi apagado. Falta a policy de DELETE para 'authenticated' no Supabase.", "err");
+      return;
+    }
+    // Espelha na memória o que o "on delete set null" fez no banco, senão a
+    // tela continuaria mostrando o vínculo antigo até um F5.
+    const campo = tipo === "ger" ? "gerente_id" : tipo === "superv" ? "supervisor_id" : "superintendente_id";
+    let desvinculados = 0;
+    state.rows.forEach(x => {
+      if (x[campo] === id) {
+        x[campo] = null;
+        desvinculados++;
+      }
+    });
+    await carregarColaboradores(true);
+    renderColaboradores();
+    montarFiltros();
+    aplicarFiltros();
+    if (state.gestor) renderKPIs();
+    logHist("excluiu_colaborador", COLAB_TABELA[tipo], id, `Excluiu ${COLAB_TIPOS[tipo].toLowerCase()} ${norm(r.nome)}${desvinculados ? ` (${desvinculados} sub(s) desvinculados)` : ""}`);
+    toast(desvinculados ? `Colaborador excluído — ${desvinculados} sub(s) ficaram sem vínculo` : "Colaborador excluído", "ok");
+  } catch (e) {
+    console.error(e);
+    toast("Erro ao excluir: " + e.message, "err");
+  }
+}
+
 function switchTab(t) {
   $("viewWelcome").style.display = t === "welcome" ? "" : "none";
   $("viewSubs").style.display = t === "subs" ? "" : "none";
   $("viewPendentes").style.display = t === "pendentes" ? "" : "none";
   $("viewBancosConsulta").style.display = t === "bancosc" ? "" : "none";
   $("viewBancos").style.display = t === "bancos" ? "" : "none";
+  $("viewColab").style.display = t === "colab" ? "" : "none";
   $("viewProducao").style.display = t === "producao" ? "" : "none";
   $("viewAgenda").style.display = t === "agenda" ? "" : "none";
   $("viewHist").style.display = t === "hist" ? "" : "none";
@@ -3402,6 +3864,11 @@ function switchTab(t) {
   if (t === "pendentes") renderPendentes();
   if (t === "bancosc") renderBancosConsulta();
   if (t === "bancos") renderBancos();
+  if (t === "colab") {
+    $("colabExpandir").textContent = state.colabExpandTudo ? "Recolher tudo" : "Expandir tudo";
+    renderColaboradores();
+    carregarColaboradores().then(renderColaboradores);
+  }
   if (t === "producao") initProducao();
   if (t === "agenda") renderAgenda();
   if (t === "hist") renderHistorico();
@@ -3413,6 +3880,7 @@ function switchTab(t) {
     pendentes: "viewPendentes",
     bancosc: "viewBancosConsulta",
     bancos: "viewBancos",
+    colab: "viewColab",
     producao: "viewProducao",
     agenda: "viewAgenda",
     hist: "viewHist",
@@ -3461,6 +3929,16 @@ function bindForm() {
     validarCnpjSubUI();
   });
   $("f_tipo").addEventListener("change", atualizarObrigatoriedadeComissao);
+  // Cascata da equipe no formulário do sub
+  $("f_superintendente").addEventListener("change", () => {
+    const superId = $("f_superintendente").value;
+    montarFormSupervSel(superId, null);
+    montarFormGerenteSel(superId, null);
+  });
+  $("f_gerente").addEventListener("change", () => {
+    const g = gerenteById($("f_gerente").value);
+    if (g) $("f_supervisor").value = g.supervisor_id ? String(g.supervisor_id) : "";
+  });
   $("novoBancoBtn").onclick = () => abrirBanco(null);
   $("fBancoStatus").addEventListener("change", renderBancos);
   $("bancoSave").onclick = salvarBanco;
@@ -3567,6 +4045,7 @@ function bind() {
   $("gestorBtn").onclick = () => {
     $("loginUser").value = "";
     $("loginPass").value = "";
+    $("loginKeep").checked = false;
     $("loginHint").textContent = "";
     $("loginOverlay").classList.add("show");
     $("loginUser").focus();
@@ -3581,9 +4060,10 @@ function bind() {
       return;
     }
     $("loginHint").textContent = "Verificando…";
-    const resultado = await authLogin("gestor", login, senha);
+    const resultado = await authLogin("gestor", login, senha, $("loginKeep").checked);
     if (resultado) {
       state.gestorNome = resultado.nome;
+      registrarAtividade();
       $("loginOverlay").classList.remove("show");
       entrarGestor();
     } else $("loginHint").innerHTML = '<span class="warn">Login ou senha incorretos.</span>';
@@ -3683,6 +4163,30 @@ function bind() {
     }
   });
   $("fBuscaPendentes").addEventListener("input", renderPendentes);
+  $("colabBusca").addEventListener("input", renderColaboradores);
+  $("colabExpandir").onclick = () => {
+    state.colabExpandTudo = !state.colabExpandTudo;
+    $("colabExpandir").textContent = state.colabExpandTudo ? "Recolher tudo" : "Expandir tudo";
+    renderColaboradores();
+  };
+  $("colabEstado").innerHTML = '<option value="">—</option>' + Object.keys(NOME_UF).sort().map(uf => `<option value="${uf}">${uf} — ${escapeHtml(NOME_UF[uf])}</option>`).join("");
+  $("colabNovo").onclick = () => abrirColabForm(null, null);
+  $("colabSalvar").onclick = salvarColab;
+  $("colabTipo").addEventListener("change", atualizarColabCampos);
+  $("colabSuperSel").addEventListener("change", () => montarColabSupervSel($("colabSuperSel").value));
+  $("colabFone").addEventListener("input", e => e.target.value = mascaraTel(e.target.value));
+  $("colabTree").addEventListener("click", e => {
+    const ed = e.target.closest("[data-coledit]"), dl = e.target.closest("[data-coldel]");
+    if (ed) {
+      e.preventDefault();
+      const [ tipo, id ] = ed.dataset.coledit.split(":");
+      abrirColabForm(tipo, +id);
+    } else if (dl) {
+      e.preventDefault();
+      const [ tipo, id ] = dl.dataset.coldel.split(":");
+      excluirColab(tipo, +id);
+    }
+  });
   document.querySelectorAll("#tabelaSubs thead th.sortable").forEach(th => {
     th.onclick = () => ordenarPorColuna(th.dataset.sort);
   });
@@ -3821,9 +4325,11 @@ async function initTicker() {
   setInterval(() => {
     if (state.gestor) carregarDuvidas();
   }, 2e4);
+  iniciarMonitorInatividade();
   restaurarSessao("gestor").then(resultado => {
     if (resultado) {
       state.gestorNome = resultado.nome;
+      registrarAtividade();
       entrarGestor();
     }
   });

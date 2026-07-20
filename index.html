@@ -45,6 +45,10 @@
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg>
         Bancos cadastrados
       </button>
+      <button class="tab" data-tab="colab">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 6.5a3 3 0 0 1 0 5.5"/><path d="M18 14.2c1.8.7 3 2.4 3 4.3"/></svg>
+        Colaboradores
+      </button>
       <button class="tab" data-tab="producao">
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
         Produção
@@ -278,6 +282,22 @@
     </div>
   </div>
 
+  <div id="viewColab" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="colabCount">—</span>
+        <div class="spacer"></div>
+        <input id="colabBusca" type="text" placeholder="Buscar por nome, código, estado…" autocomplete="off" style="max-width:280px">
+        <button class="btn sm" id="colabExpandir">Expandir tudo</button>
+        <button class="btn primary sm" id="colabNovo">+ Novo colaborador</button>
+      </div>
+      <div class="colab-tree" id="colabTree"></div>
+      <div class="empty-state" id="colabEmpty" style="display:none">
+        <b>Nenhum colaborador para exibir</b>As consultas voltaram sem registros. Se você já cadastrou os dados, o mais provável é faltar permissão de leitura no Supabase (policy de SELECT / RLS ou GRANT para o papel autenticado) nas tabelas superintendentes, supervisores e gerentes_comerciais.
+      </div>
+    </div>
+  </div>
+
   <div id="viewProducao" style="display:none">
     <div class="prod-filtros">
       <div class="field prod-field-sub">
@@ -440,6 +460,7 @@
         <label>Senha</label>
         <input id="loginPass" type="password" placeholder="Sua senha" autocomplete="current-password">
       </div>
+      <label class="login-keep"><input id="loginKeep" type="checkbox"> <span>Manter conectado neste navegador</span></label>
       <div class="hint" id="loginHint"></div>
       <p class="login-aviso">Se você é consultor, não é necessário entrar — utilize o modo de consulta na tela principal.</p>
     </form>
@@ -509,7 +530,7 @@
         <div class="field"><label>Responsável (empresa)</label><input id="f_resp" type="text"></div>
         <div class="field"><label>Superintendente</label><select id="f_superintendente"><option value="">Selecione…</option></select></div>
         <div class="field"><label>Supervisor</label><select id="f_supervisor"><option value="">Selecione…</option></select></div>
-        <div class="field"><label>Gerente <span class="req">*</span></label><select id="f_gerente"><option value="">Selecione…</option></select></div>
+        <div class="field"><label>Gerente</label><select id="f_gerente"><option value="">Selecione…</option></select><div class="hint" id="gerenteRefHint" style="display:none;color:var(--warn)"></div></div>
         <div class="field"><label id="lblComissao">Comissão <span class="req" id="comissaoReq" style="display:none">*</span></label><input id="f_comissao" type="text" placeholder="ex.: 90% (repasse ao sub, o restante fica com a empresa)"><div class="hint" id="hintComissao">Texto livre. Ex.: "90%" = o sub recebe 90% do banco, 10% fica com a empresa.</div></div>
       </div>
     </div>
@@ -775,6 +796,42 @@
       <button class="btn ghost" data-close>Cancelar</button>
       <span class="spacer"></span>
       <button class="btn danger solid" id="delSubConfirm" disabled>Excluir definitivamente</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="colabOverlay">
+  <div class="modal sm">
+    <div class="modal-head"><h2 id="colabModalTitle">Novo colaborador</h2><button class="x" data-close>&times;</button></div>
+    <form class="modal-body" id="colabForm" onsubmit="return false">
+      <div class="field" id="colabTipoField">
+        <label>Tipo de colaborador</label>
+        <select id="colabTipo" aria-label="Tipo de colaborador">
+          <option value="super">Superintendente</option>
+          <option value="superv">Supervisor</option>
+          <option value="ger">Gerente comercial</option>
+        </select>
+      </div>
+      <div class="field"><label>Nome <span class="req">*</span></label><input id="colabNome" type="text" placeholder="Nome completo" autocomplete="off"></div>
+      <div class="field" id="colabSuperField" style="display:none">
+        <label>Superintendente <span class="req">*</span></label>
+        <select id="colabSuperSel" aria-label="Superintendente"><option value="">Selecione…</option></select>
+      </div>
+      <div class="field" id="colabSupervField" style="display:none">
+        <label>Supervisor</label>
+        <select id="colabSupervSel" aria-label="Supervisor"><option value="">Sem supervisor (direto ao superintendente)</option></select>
+      </div>
+      <div class="field" id="colabCodigoField" style="display:none"><label>Código do parceiro <span class="req">*</span></label><input id="colabCodigo" type="text" placeholder="ex.: 12345" autocomplete="off"></div>
+      <div class="field" id="colabCpfField" style="display:none"><label>CPF / CNPJ</label><input id="colabCpf" type="text" placeholder="Opcional" autocomplete="off"></div>
+      <div class="field" id="colabEstadoField" style="display:none"><label>Estado (UF)</label><select id="colabEstado" aria-label="Estado"><option value="">—</option></select></div>
+      <div class="field" id="colabFoneField" style="display:none"><label>Telefone / celular</label><input id="colabFone" type="text" placeholder="(00) 00000-0000" autocomplete="off"></div>
+      <div class="field" id="colabEmailField" style="display:none"><label>E-mail</label><input id="colabEmail" type="email" placeholder="Opcional" autocomplete="off"></div>
+      <div class="hint" id="colabHint"></div>
+    </form>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="colabSalvar">Salvar</button>
     </div>
   </div>
 </div>
