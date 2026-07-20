@@ -801,32 +801,35 @@
 </div>
 
 <div class="overlay" id="colabOverlay">
-  <div class="modal sm">
+  <div class="modal colab-modal">
     <div class="modal-head"><h2 id="colabModalTitle">Novo colaborador</h2><button class="x" data-close>&times;</button></div>
     <form class="modal-body" id="colabForm" onsubmit="return false">
-      <div class="field" id="colabTipoField">
-        <label>Tipo de colaborador</label>
-        <select id="colabTipo" aria-label="Tipo de colaborador">
-          <option value="super">Superintendente</option>
-          <option value="superv">Supervisor</option>
-          <option value="ger">Gerente comercial</option>
-        </select>
+      <div class="form-grid">
+        <div class="field full" id="colabTipoField">
+          <label>Tipo de colaborador</label>
+          <select id="colabTipo" aria-label="Tipo de colaborador">
+            <option value="super">Superintendente</option>
+            <option value="superv">Supervisor</option>
+            <option value="ger">Gerente comercial</option>
+          </select>
+        </div>
+        <div class="field full"><label>Nome <span class="req">*</span></label><input id="colabNome" type="text" placeholder="Nome completo" autocomplete="off"></div>
+        <div class="field full" id="colabSuperField" style="display:none">
+          <label>Superintendente <span class="req">*</span></label>
+          <select id="colabSuperSel" aria-label="Superintendente"><option value="">Selecione…</option></select>
+        </div>
+        <div class="field full" id="colabSupervField" style="display:none">
+          <label>Supervisor</label>
+          <select id="colabSupervSel" aria-label="Supervisor"><option value="">Sem supervisor (direto ao superintendente)</option></select>
+        </div>
+        <div class="colab-sep" id="colabSepGerente" style="display:none">Dados do gerente</div>
+        <div class="field" id="colabCodigoField" style="display:none"><label>Código do parceiro <span class="req">*</span></label><input id="colabCodigo" type="text" placeholder="ex.: SP12345" autocomplete="off"></div>
+        <div class="field" id="colabCpfField" style="display:none"><label>CPF / CNPJ</label><input id="colabCpf" type="text" placeholder="Opcional" autocomplete="off"></div>
+        <div class="field" id="colabEstadoField" style="display:none"><label>Estado (UF)</label><select id="colabEstado" aria-label="Estado"><option value="">—</option></select></div>
+        <div class="field" id="colabFoneField" style="display:none"><label>Telefone / celular</label><input id="colabFone" type="text" placeholder="(00) 00000-0000" autocomplete="off"></div>
+        <div class="field full" id="colabEmailField" style="display:none"><label>E-mail</label><input id="colabEmail" type="email" placeholder="Opcional" autocomplete="off"></div>
+        <div class="hint full" id="colabHint"></div>
       </div>
-      <div class="field"><label>Nome <span class="req">*</span></label><input id="colabNome" type="text" placeholder="Nome completo" autocomplete="off"></div>
-      <div class="field" id="colabSuperField" style="display:none">
-        <label>Superintendente <span class="req">*</span></label>
-        <select id="colabSuperSel" aria-label="Superintendente"><option value="">Selecione…</option></select>
-      </div>
-      <div class="field" id="colabSupervField" style="display:none">
-        <label>Supervisor</label>
-        <select id="colabSupervSel" aria-label="Supervisor"><option value="">Sem supervisor (direto ao superintendente)</option></select>
-      </div>
-      <div class="field" id="colabCodigoField" style="display:none"><label>Código do parceiro <span class="req">*</span></label><input id="colabCodigo" type="text" placeholder="ex.: 12345" autocomplete="off"></div>
-      <div class="field" id="colabCpfField" style="display:none"><label>CPF / CNPJ</label><input id="colabCpf" type="text" placeholder="Opcional" autocomplete="off"></div>
-      <div class="field" id="colabEstadoField" style="display:none"><label>Estado (UF)</label><select id="colabEstado" aria-label="Estado"><option value="">—</option></select></div>
-      <div class="field" id="colabFoneField" style="display:none"><label>Telefone / celular</label><input id="colabFone" type="text" placeholder="(00) 00000-0000" autocomplete="off"></div>
-      <div class="field" id="colabEmailField" style="display:none"><label>E-mail</label><input id="colabEmail" type="email" placeholder="Opcional" autocomplete="off"></div>
-      <div class="hint" id="colabHint"></div>
     </form>
     <div class="modal-foot">
       <button class="btn ghost" data-close>Cancelar</button>

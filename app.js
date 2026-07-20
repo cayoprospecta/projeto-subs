@@ -3579,9 +3579,11 @@ function colabActs(tipo, id) {
   return `<span class="col-acts"><button class="col-act" data-coledit="${tipo}:${id}" title="Editar" aria-label="Editar">&#9998;</button><button class="col-act del" data-coldel="${tipo}:${id}" title="Excluir" aria-label="Excluir">&times;</button></span>`;
 }
 
-function colabGerenteRow(g) {
+function colabGerenteRow(g, qtdSubs) {
   const email = norm(g.email) ? `<a href="mailto:${escapeHtml(norm(g.email))}">${escapeHtml(norm(g.email))}</a>` : "—";
-  return `<div class="col-ger">\n    <span class="cg-nome">${escapeHtml(norm(g.nome) || "—")}</span>\n    <span class="cg-cod mono">${escapeHtml(norm(g.codigo_parceiro) || "—")}</span>\n    <span class="cg-uf">${escapeHtml(norm(g.estado) || "—")}</span>\n    <span class="cg-fone mono">${linkWhats(g.fone_celular)}</span>\n    <span class="cg-email">${email}</span>\n    ${colabActs("ger", g.id)}\n  </div>`;
+  const n = qtdSubs || 0;
+  const pill = n ? `<span class="cg-subs" title="${n} substabelecido${n !== 1 ? "s" : ""} vinculado${n !== 1 ? "s" : ""}">${n} sub${n !== 1 ? "s" : ""}</span>` : `<span class="cg-subs zero" title="Nenhum substabelecido vinculado">sem subs</span>`;
+  return `<div class="col-ger">\n    <span class="cg-nome">${escapeHtml(norm(g.nome) || "—")}${pill}</span>\n    <span class="cg-cod mono">${escapeHtml(norm(g.codigo_parceiro) || "—")}</span>\n    <span class="cg-uf">${escapeHtml(norm(g.estado) || "—")}</span>\n    <span class="cg-fone mono">${linkWhats(g.fone_celular)}</span>\n    <span class="cg-email">${email}</span>\n    ${colabActs("ger", g.id)}\n  </div>`;
 }
 
 function renderColaboradores() {
@@ -3609,6 +3611,18 @@ function renderColaboradores() {
   });
   const temDados = state.superintendentes.length || state.supervisores.length || state.gerentes.length;
   $("colabEmpty").style.display = temDados ? "none" : "block";
+  // Quantos substabelecidos estão vinculados a cada colaborador. Usa a
+  // hierarquia efetiva, então um gerente movido de supervisor já conta no
+  // supervisor novo.
+  const subsPorGer = {}, subsPorSv = {}, subsPorSuper = {};
+  state.rows.filter(isReal).forEach(r => {
+    if (r.gerente_id) subsPorGer[r.gerente_id] = (subsPorGer[r.gerente_id] || 0) + 1;
+    const sv = supervisorDoSub(r);
+    if (sv) subsPorSv[sv] = (subsPorSv[sv] || 0) + 1;
+    const sp = superintendenteDoSub(r);
+    if (sp) subsPorSuper[sp] = (subsPorSuper[sp] || 0) + 1;
+  });
+  const nSubs = n => `${n || 0} sub${(n || 0) !== 1 ? "s" : ""}`;
   const blocos = supers.map(sup => {
     const superMatch = q && lower(sup.nome).includes(q);
     const svs = (svBySuper[sup.id] || []).slice().sort(colabNomeCmp);
@@ -3617,15 +3631,15 @@ function renderColaboradores() {
       const gers = (gerBySv[sv.id] || []).slice().sort(colabNomeCmp);
       const vis = !q || superMatch || svMatch ? gers : gers.filter(g => colabBlob(g).includes(q));
       if (q && !superMatch && !svMatch && !vis.length) return null;
-      return `<details class="col-superv"${abrir ? " open" : ""}>\n        <summary><span class="cs-nome">${escapeHtml(norm(sv.nome))}</span><span class="cs-meta">${gers.length} gerente${gers.length !== 1 ? "s" : ""}</span>${colabActs("superv", sv.id)}</summary>\n        <div class="col-gers">${vis.length ? vis.map(colabGerenteRow).join("") : '<div class="col-vazio">Nenhum gerente vinculado.</div>'}</div>\n      </details>`;
+      return `<details class="col-superv"${abrir ? " open" : ""}>\n        <summary><span class="cs-nome">${escapeHtml(norm(sv.nome))}</span><span class="cs-meta">${gers.length} gerente${gers.length !== 1 ? "s" : ""} · ${nSubs(subsPorSv[sv.id])}</span>${colabActs("superv", sv.id)}</summary>\n        <div class="col-gers">${vis.length ? vis.map(g => colabGerenteRow(g, subsPorGer[g.id])).join("") : '<div class="col-vazio">Nenhum gerente vinculado.</div>'}</div>\n      </details>`;
     }).filter(Boolean);
     const diretos = (gerDiretoBySuper[sup.id] || []).slice().sort(colabNomeCmp);
     const visDiretos = !q || superMatch ? diretos : diretos.filter(g => colabBlob(g).includes(q));
-    const diretosHtml = visDiretos.length ? `<details class="col-superv sem-sup"${abrir ? " open" : ""}>\n      <summary><span class="cs-nome">Sem supervisor</span><span class="cs-meta">${visDiretos.length} gerente${visDiretos.length !== 1 ? "s" : ""}</span></summary>\n      <div class="col-gers">${visDiretos.map(colabGerenteRow).join("")}</div>\n    </details>` : "";
+    const diretosHtml = visDiretos.length ? `<details class="col-superv sem-sup"${abrir ? " open" : ""}>\n      <summary><span class="cs-nome">Sem supervisor</span><span class="cs-meta">${visDiretos.length} gerente${visDiretos.length !== 1 ? "s" : ""}</span></summary>\n      <div class="col-gers">${visDiretos.map(g => colabGerenteRow(g, subsPorGer[g.id])).join("")}</div>\n    </details>` : "";
     if (q && !superMatch && !svHtml.length && !visDiretos.length) return null;
     const nSv = svs.length, nGer = totalGerBySuper[sup.id] || 0;
     const corpo = svHtml.join("") + diretosHtml || '<div class="col-vazio">Nenhum supervisor ou gerente vinculado.</div>';
-    return `<details class="col-super"${abrir ? " open" : ""}>\n      <summary>\n        <span class="csup-nome">${escapeHtml(norm(sup.nome))}</span>\n        <span class="csup-meta">${nSv} supervisor${nSv !== 1 ? "es" : ""} · ${nGer} gerente${nGer !== 1 ? "s" : ""}</span>\n        ${colabActs("super", sup.id)}\n      </summary>\n      <div class="col-super-body">${corpo}</div>\n    </details>`;
+    return `<details class="col-super"${abrir ? " open" : ""}>\n      <summary>\n        <span class="csup-nome">${escapeHtml(norm(sup.nome))}</span>\n        <span class="csup-meta">${nSv} supervisor${nSv !== 1 ? "es" : ""} · ${nGer} gerente${nGer !== 1 ? "s" : ""} · ${nSubs(subsPorSuper[sup.id])}</span>\n        ${colabActs("super", sup.id)}\n      </summary>\n      <div class="col-super-body">${corpo}</div>\n    </details>`;
   }).filter(Boolean);
   if (temDados) $("colabTree").innerHTML = blocos.join("") || '<div class="col-vazio" style="padding:22px">Nada encontrado para a busca.</div>'; else $("colabTree").innerHTML = "";
 }
@@ -3665,6 +3679,7 @@ function atualizarColabCampos() {
   $("colabSuperField").style.display = t === "superv" || t === "ger" ? "" : "none";
   $("colabSupervField").style.display = t === "ger" ? "" : "none";
   [ "colabCodigoField", "colabCpfField", "colabEstadoField", "colabFoneField", "colabEmailField" ].forEach(id => $(id).style.display = t === "ger" ? "" : "none");
+  $("colabSepGerente").style.display = t === "ger" ? "" : "none";
 }
 
 function abrirColabForm(tipo, id) {
