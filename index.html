@@ -45,6 +45,10 @@
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg>
         Bancos cadastrados
       </button>
+      <button class="tab" data-tab="empresas">
+        <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 10h5a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M7 8h4M7 12h4M7 16h4"/></svg>
+        Empresas
+      </button>
       <button class="tab" data-tab="colab">
         <svg class="tab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 6.5a3 3 0 0 1 0 5.5"/><path d="M18 14.2c1.8.7 3 2.4 3 4.3"/></svg>
         Colaboradores
@@ -277,6 +281,28 @@
         </table>
         <div class="empty-state" id="bancosEmpty" style="display:none">
           <b>Nenhum banco cadastrado</b>Clique em “Novo banco” para começar.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="viewEmpresas" style="display:none">
+    <div class="tablecard">
+      <div class="tablebar">
+        <span class="count" id="empresasCount">—</span>
+        <div class="spacer"></div>
+        <input id="empresaBusca" type="text" placeholder="Buscar por razão, fantasia ou CNPJ…" autocomplete="off" style="max-width:280px">
+        <button class="btn primary sm" id="novaEmpresaBtn">+ Nova empresa</button>
+      </div>
+      <div class="tablescroll">
+        <table>
+          <thead>
+            <tr><th>Razão social</th><th>Nome fantasia</th><th>CNPJ</th><th>Substabelecidos</th><th>Ações</th></tr>
+          </thead>
+          <tbody id="empresasTbody"></tbody>
+        </table>
+        <div class="empty-state" id="empresasEmpty" style="display:none">
+          <b>Nenhuma empresa encontrada</b>Clique em “Nova empresa” para cadastrar.
         </div>
       </div>
     </div>
@@ -796,6 +822,26 @@
       <button class="btn ghost" data-close>Cancelar</button>
       <span class="spacer"></span>
       <button class="btn danger solid" id="delSubConfirm" disabled>Excluir definitivamente</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="empresaOverlay">
+  <div class="modal colab-modal">
+    <div class="modal-head"><h2 id="empresaModalTitle">Nova empresa</h2><button class="x" data-close>&times;</button></div>
+    <form class="modal-body" id="empresaForm" onsubmit="return false">
+      <div class="form-grid">
+        <div class="field full"><label>Razão social <span class="req">*</span></label><input id="emp_razao" type="text" placeholder="Razão social completa" autocomplete="off"></div>
+        <div class="field full"><label>Nome fantasia</label><input id="emp_fantasia" type="text" placeholder="Opcional" autocomplete="off"></div>
+        <div class="field full"><label>CNPJ <span class="req">*</span></label><input id="emp_cnpj" type="text" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00" autocomplete="off"><div class="hint" id="emp_cnpj_hint"></div></div>
+        <div class="del-warn full" id="empresaVinculo" style="display:none"></div>
+        <div class="hint full" id="empresaHint"></div>
+      </div>
+    </form>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="empresaSalvar">Salvar</button>
     </div>
   </div>
 </div>

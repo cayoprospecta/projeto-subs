@@ -50,6 +50,7 @@ const state = {
   session: null,
   editingId: null,
   editingBancoId: null,
+  editingEmpresaId: null,
   editingPassoId: null,
   obsMode: null,
   obsSubId: null,
@@ -3644,6 +3645,175 @@ function renderColaboradores() {
   if (temDados) $("colabTree").innerHTML = blocos.join("") || '<div class="col-vazio" style="padding:22px">Nada encontrado para a busca.</div>'; else $("colabTree").innerHTML = "";
 }
 
+// ---------- Empresas do grupo ----------
+// Atenção: os substabelecidos apontam para a empresa pelo CNPJ em texto
+// (cnpj_empresa), não por FK. Por isso mudar o CNPJ aqui precisa propagar
+// para os subs, senão o vínculo se perde silenciosamente.
+function empresaSubsCount(e) {
+  const c = soDigitos(e && e.cnpj);
+  if (!c) return 0;
+  return state.rows.filter(isReal).filter(r => soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === c).length;
+}
+
+async function recarregarEmpresas() {
+  const res = await fetch(`${REST_EMP()}?select=*&order=razao_social.asc`, {
+    headers: H()
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+  state.empresas = await res.json();
+  montarEmpresasSelect();
+}
+
+function renderEmpresas() {
+  const q = lower($("empresaBusca").value.trim()), qd = soDigitos(q);
+  let list = state.empresas.slice().sort((a, b) => norm(a.razao_social).localeCompare(norm(b.razao_social), "pt-BR"));
+  if (q) list = list.filter(e => [ e.razao_social, e.fantasia, e.cnpj ].map(lower).join(" ").includes(q) || qd && soDigitos(e.cnpj).includes(qd));
+  $("empresasCount").innerHTML = `<b>${list.length}</b> empresa${list.length !== 1 ? "s" : ""}`;
+  $("empresasEmpty").style.display = list.length ? "none" : "block";
+  $("empresasTbody").innerHTML = list.map(e => {
+    const n = empresaSubsCount(e);
+    return `<tr>\n      <td class="empresa">${escapeHtml(norm(e.razao_social) || "—")}</td>\n      <td>${escapeHtml(norm(e.fantasia) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(e.cnpj) || "—")}</td>\n      <td>${n ? `<b>${n}</b>` : '<span style="color:var(--dim)">—</span>'}</td>\n      <td><div class="rowact">\n        <button class="btn sm" data-empedit="${e.id}">Editar</button>\n        <button class="btn sm danger" data-empdel="${e.id}">Excluir</button>\n      </div></td>\n    </tr>`;
+  }).join("");
+}
+
+function abrirEmpresa(id) {
+  if (!state.gestor) return;
+  state.editingEmpresaId = id || null;
+  const e = id ? state.empresas.find(x => x.id === id) || {} : {};
+  $("empresaModalTitle").textContent = id ? "Editar empresa" : "Nova empresa";
+  $("emp_razao").value = norm(e.razao_social);
+  $("emp_fantasia").value = norm(e.fantasia);
+  $("emp_cnpj").value = mascaraCNPJ(norm(e.cnpj));
+  $("empresaHint").textContent = "";
+  $("empresaHint").className = "hint";
+  $("emp_cnpj_hint").textContent = "";
+  const n = id ? empresaSubsCount(e) : 0;
+  const av = $("empresaVinculo");
+  if (n) {
+    av.innerHTML = `Esta empresa está vinculada a <b>${n}</b> substabelecido${n !== 1 ? "s" : ""} pelo CNPJ. Se você alterar o CNPJ, eles serão atualizados junto para não perder o vínculo.`;
+    av.style.display = "";
+  } else av.style.display = "none";
+  $("empresaOverlay").classList.add("show");
+  $("emp_razao").focus();
+}
+
+async function salvarEmpresa() {
+  if (!state.gestor) return;
+  const razao = $("emp_razao").value.trim(), fantasia = $("emp_fantasia").value.trim(), cnpj = $("emp_cnpj").value.trim();
+  const hint = $("empresaHint");
+  const erro = m => hint.innerHTML = `<span class="warn">${escapeHtml(m)}</span>`;
+  hint.className = "hint";
+  if (!razao) return erro("Informe a razão social.");
+  if (!cnpj) return erro("Informe o CNPJ.");
+  if (!validaCNPJ(cnpj)) return erro("CNPJ inválido.");
+  const id = state.editingEmpresaId;
+  const anterior = id ? state.empresas.find(x => x.id === id) : null;
+  const cnpjMudou = !!anterior && soDigitos(anterior.cnpj) !== soDigitos(cnpj);
+  const nVinc = anterior ? empresaSubsCount(anterior) : 0;
+  if (cnpjMudou && nVinc && !confirm(`O CNPJ mudou e ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} usa${nVinc !== 1 ? "m" : ""} o CNPJ antigo.\n\nAtualizar também ${nVinc !== 1 ? "esses" : "esse"} ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} para o novo CNPJ?\n\nSe cancelar, nada será salvo.`)) return;
+  const btn = $("empresaSalvar");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.innerHTML = '<span class="spin"></span> Salvando';
+  try {
+    const res = await fetch(id ? `${REST_EMP()}?id=eq.${id}` : REST_EMP(), {
+      method: id ? "PATCH" : "POST",
+      headers: {
+        ...H(),
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        razao_social: maiusc(razao),
+        fantasia: fantasia ? maiusc(fantasia) : null,
+        cnpj: cnpj
+      })
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      if (/duplicate key|unique/i.test(t)) throw new Error("Já existe uma empresa com esse CNPJ.");
+      throw new Error(`HTTP ${res.status} — ${t}`);
+    }
+    const saved = (await res.json())[0];
+    if (!saved) throw new Error("Nada foi salvo. Verifique a policy de INSERT/UPDATE no Supabase.");
+    let atualizados = 0;
+    if (cnpjMudou && nVinc) {
+      // Propaga o CNPJ novo para os subs. Agrupa pelos valores brutos gravados
+      // (o formato pode variar), assim resolve em uma ou duas chamadas.
+      const antigo = soDigitos(anterior.cnpj);
+      const alvo = state.rows.filter(isReal).filter(r => soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === antigo);
+      for (const valor of [ ...new Set(alvo.map(r => r[CONFIG.COL_CNPJ_GRUPO])) ]) {
+        const up = await fetch(`${REST()}?${CONFIG.COL_CNPJ_GRUPO}=eq.${encodeURIComponent(valor)}`, {
+          method: "PATCH",
+          headers: {
+            ...H(),
+            Prefer: "return=minimal"
+          },
+          body: JSON.stringify({
+            [CONFIG.COL_CNPJ_GRUPO]: cnpj
+          })
+        });
+        if (!up.ok) throw new Error(`Empresa salva, mas falhou ao atualizar os subs: HTTP ${up.status} — ${await up.text()}`);
+      }
+      alvo.forEach(r => {
+        r[CONFIG.COL_CNPJ_GRUPO] = cnpj;
+        atualizados++;
+      });
+    }
+    await recarregarEmpresas();
+    renderEmpresas();
+    aplicarFiltros();
+    $("empresaOverlay").classList.remove("show");
+    logHist(id ? "editou_empresa" : "criou_empresa", CONFIG.TABLE_EMPRESAS, saved.id, `${id ? "Editou" : "Criou"} empresa ${norm(saved.razao_social)}${atualizados ? ` (CNPJ propagado para ${atualizados} sub(s))` : ""}`);
+    toast(atualizados ? `Empresa salva — ${atualizados} sub(s) atualizados` : id ? "Empresa atualizada" : "Empresa criada", "ok");
+  } catch (e) {
+    console.error(e);
+    erro(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function excluirEmpresa(id) {
+  if (!state.gestor) return;
+  const e = state.empresas.find(x => x.id === id);
+  if (!e) return;
+  const nBanco = state.bancoVinculos.filter(v => v.empresa_grupo_id === id).length;
+  if (nBanco) {
+    toast(`Não é possível excluir: esta empresa tem ${nBanco} vínculo(s) ativo(s) com banco. Remova-os antes.`, "err");
+    return;
+  }
+  const n = empresaSubsCount(e);
+  const aviso = `Excluir a empresa "${norm(e.razao_social)}"?` + (n ? `\n\n${n} substabelecido${n !== 1 ? "s" : ""} aponta${n !== 1 ? "m" : ""} para o CNPJ dela e ficará${n !== 1 ? "o" : ""} sem empresa correspondente (o CNPJ continua gravado neles).` : "");
+  if (!confirm(aviso)) return;
+  try {
+    const res = await fetch(`${REST_EMP()}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: {
+        ...H(),
+        Prefer: "return=representation"
+      }
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      if (/foreign key|violates/i.test(t)) throw new Error("Há registros vinculados que impedem a exclusão.");
+      throw new Error(`HTTP ${res.status} — ${t}`);
+    }
+    const del = await res.json();
+    if (!Array.isArray(del) || !del.length) {
+      toast("Nada foi apagado. Falta a policy de DELETE para 'authenticated' no Supabase.", "err");
+      return;
+    }
+    await recarregarEmpresas();
+    renderEmpresas();
+    logHist("excluiu_empresa", CONFIG.TABLE_EMPRESAS, id, `Excluiu empresa ${norm(e.razao_social)}`);
+    toast("Empresa excluída", "ok");
+  } catch (err) {
+    console.error(err);
+    toast("Erro ao excluir: " + err.message, "err");
+  }
+}
+
 const COLAB_TIPOS = {
   super: "Superintendente",
   superv: "Supervisor",
@@ -3885,6 +4055,7 @@ function switchTab(t) {
   $("viewPendentes").style.display = t === "pendentes" ? "" : "none";
   $("viewBancosConsulta").style.display = t === "bancosc" ? "" : "none";
   $("viewBancos").style.display = t === "bancos" ? "" : "none";
+  $("viewEmpresas").style.display = t === "empresas" ? "" : "none";
   $("viewColab").style.display = t === "colab" ? "" : "none";
   $("viewProducao").style.display = t === "producao" ? "" : "none";
   $("viewAgenda").style.display = t === "agenda" ? "" : "none";
@@ -3896,6 +4067,7 @@ function switchTab(t) {
   if (t === "pendentes") renderPendentes();
   if (t === "bancosc") renderBancosConsulta();
   if (t === "bancos") renderBancos();
+  if (t === "empresas") renderEmpresas();
   if (t === "colab") {
     $("colabExpandir").textContent = state.colabExpandTudo ? "Recolher tudo" : "Expandir tudo";
     renderColaboradores();
@@ -3912,6 +4084,7 @@ function switchTab(t) {
     pendentes: "viewPendentes",
     bancosc: "viewBancosConsulta",
     bancos: "viewBancos",
+    empresas: "viewEmpresas",
     colab: "viewColab",
     producao: "viewProducao",
     agenda: "viewAgenda",
@@ -4232,6 +4405,27 @@ function bind() {
     $("colabExpandir").textContent = state.colabExpandTudo ? "Recolher tudo" : "Expandir tudo";
     renderColaboradores();
   };
+  $("empresaBusca").addEventListener("input", renderEmpresas);
+  $("novaEmpresaBtn").onclick = () => abrirEmpresa(null);
+  $("empresaSalvar").onclick = salvarEmpresa;
+  $("emp_cnpj").addEventListener("input", e => {
+    e.target.value = mascaraCNPJ(e.target.value);
+    const v = e.target.value.trim(), h = $("emp_cnpj_hint");
+    if (!v) {
+      h.textContent = "";
+      h.className = "hint";
+    } else if (validaCNPJ(v)) {
+      h.textContent = "CNPJ válido";
+      h.className = "hint ok";
+    } else {
+      h.textContent = "CNPJ inválido";
+      h.className = "hint warn";
+    }
+  });
+  $("empresasTbody").addEventListener("click", e => {
+    const ed = e.target.closest("[data-empedit]"), dl = e.target.closest("[data-empdel]");
+    if (ed) abrirEmpresa(+ed.dataset.empedit); else if (dl) excluirEmpresa(+dl.dataset.empdel);
+  });
   $("colabEstado").innerHTML = '<option value="">—</option>' + Object.keys(NOME_UF).sort().map(uf => `<option value="${uf}">${uf} — ${escapeHtml(NOME_UF[uf])}</option>`).join("");
   $("colabNovo").onclick = () => abrirColabForm(null, null);
   $("colabSalvar").onclick = salvarColab;
