@@ -588,19 +588,36 @@ function montarFiltros() {
   fill("fBanco", bancosCadastrados);
   fill("fTipo", distintos("tipo_cadastro"));
   // Filtros de equipe agora por id (value=id, label=nome), lidos das tabelas novas
-  fillPorId("fSuper", state.superintendentes);
-  fillPorId("fSupervisor", state.supervisores);
-  fillPorId("fGerente", state.gerentes);
+  montarFiltrosEquipe();
   preencherBancosForm();
 }
 
-function fillPorId(sel, lista) {
+function fillPorId(sel, lista, desejado) {
   const el = $(sel);
   if (!el) return;
-  const atual = el.value;
+  const atual = desejado != null ? String(desejado) : el.value;
   const ord = lista.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome), "pt-BR"));
   el.innerHTML = '<option value="">Todos</option>' + ord.map(x => `<option value="${x.id}">${escapeHtml(norm(x.nome))}</option>`).join("");
-  if (atual && ord.some(x => String(x.id) === atual)) el.value = atual;
+  // Só mantém a seleção se ela ainda existir na lista filtrada; senão limpa.
+  el.value = atual && ord.some(x => String(x.id) === atual) ? atual : "";
+}
+
+// Filtros de equipe encadeados: o superintendente restringe supervisores e
+// gerentes; o supervisor restringe os gerentes. Aceita valores desejados para
+// os casos em que a seleção é derivada (ex.: escolher um gerente já define o
+// supervisor e o superintendente dele).
+function montarFiltrosEquipe(desejado) {
+  const d = desejado || {};
+  const superSel = d.super !== undefined ? d.super : $("fSuper").value;
+  const supvSel = d.supv !== undefined ? d.supv : $("fSupervisor").value;
+  const gerSel = d.ger !== undefined ? d.ger : $("fGerente").value;
+  fillPorId("fSuper", state.superintendentes, superSel);
+  const svs = superSel ? state.supervisores.filter(s => String(s.superintendente_id) === String(superSel)) : state.supervisores;
+  fillPorId("fSupervisor", svs, supvSel);
+  let gs = state.gerentes;
+  if (superSel) gs = gs.filter(g => String(g.superintendente_id) === String(superSel));
+  if (supvSel) gs = gs.filter(g => String(g.supervisor_id) === String(supvSel));
+  fillPorId("fGerente", gs, gerSel);
 }
 
 function preencherBancosForm() {
@@ -4018,18 +4035,49 @@ function bind() {
     state.filtrosVisiveis = !state.filtrosVisiveis;
     aplicarToggleFiltros();
   };
-  [ "fBusca", "fBanco", "fStatus", "fTipo", "fSuper", "fSupervisor", "fGerente" ].forEach(id => {
+  [ "fBusca", "fBanco", "fStatus", "fTipo" ].forEach(id => {
     const ev = id === "fBusca" ? "input" : "change";
     $(id).addEventListener(ev, aplicarFiltros);
+  });
+  // Equipe: cascata para baixo (restringe) e para cima (preenche o superior)
+  $("fSuper").addEventListener("change", () => {
+    montarFiltrosEquipe({
+      super: $("fSuper").value
+    });
+    aplicarFiltros();
+  });
+  $("fSupervisor").addEventListener("change", () => {
+    const sv = supervisorById($("fSupervisor").value);
+    montarFiltrosEquipe({
+      super: sv ? String(sv.superintendente_id) : $("fSuper").value,
+      supv: $("fSupervisor").value
+    });
+    aplicarFiltros();
+  });
+  $("fGerente").addEventListener("change", () => {
+    const g = gerenteById($("fGerente").value);
+    // Um gerente tem exatamente um supervisor e um superintendente: ao
+    // escolhê-lo, os dois níveis acima são preenchidos sozinhos.
+    if (g) montarFiltrosEquipe({
+      super: String(g.superintendente_id),
+      supv: g.supervisor_id ? String(g.supervisor_id) : "",
+      ger: String(g.id)
+    }); else montarFiltrosEquipe({
+      ger: ""
+    });
+    aplicarFiltros();
   });
   $("limparBtn").onclick = () => {
     $("fBusca").value = "";
     $("fBanco").value = "";
     $("fStatus").value = "ATIVO";
     $("fTipo").value = "";
-    $("fSuper").value = "";
-    $("fSupervisor").value = "";
-    $("fGerente").value = "";
+    // Reconstrói as listas completas (a cascata pode tê-las deixado filtradas)
+    montarFiltrosEquipe({
+      super: "",
+      supv: "",
+      ger: ""
+    });
     aplicarFiltros();
   };
   $("reloadBtn").onclick = carregar;
