@@ -2,6 +2,7 @@ const CONFIG = {
   SUPABASE_URL: "https://prospecta-proxy.cayonauta.workers.dev",
   TABLE: "substabelecidos",
   COL_CNPJ_GRUPO: "cnpj_empresa",
+  COL_EMPRESA_GRUPO: "empresa",
   TABLE_EMPRESAS: "empresas_grupo",
   TABLE_BANCOS: "bancos",
   TABLE_BANCO_VINCULOS: "banco_vinculos",
@@ -554,7 +555,7 @@ async function carregar() {
     montarFiltros();
     aplicarFiltros();
     if (!state.gestor && $("viewBancosConsulta").style.display !== "none") renderBancosConsulta();
-    if (state.gestor) renderKPIs();
+    atualizarKPIs();
     toast("Dados atualizados", "ok");
   } catch (e) {
     console.error(e);
@@ -668,7 +669,6 @@ function montarFormGerenteSel(superId, sel) {
 function aplicarToggleFiltros() {
   const oculto = !state.filtrosVisiveis;
   $("filtrosTop").classList.toggle("force-hide", oculto);
-  $("kpis").classList.toggle("force-hide", oculto);
   $("toggleFiltrosBtn").textContent = oculto ? "Mostrar filtros" : "Esconder filtros";
 }
 
@@ -931,8 +931,13 @@ function renderPainel() {
       porRegiao[UF_REGIAO[uf]] = (porRegiao[UF_REGIAO[uf]] || 0) + 1;
     } else porUF["Não identificado"] = (porUF["Não identificado"] || 0) + 1;
   });
-  const kpi = (label, val, key, colorClass) => `<div class="kpi kpi-click ${filtro === key ? "active" : ""}" data-filtro="${key}">\n    <div class="k-label">${label}</div><div class="k-val ${colorClass || ""}">${val}</div>\n  </div>`;
-  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan")}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompatíveis", incompativeis.length, "INCOMPATIVEL")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
+  const kpi = (label, val, key, colorClass, sub) => `<div class="kpi kpi-click ${filtro === key ? "active" : ""}" data-filtro="${key}">\n    <div class="k-label">${label}</div><div class="k-val ${colorClass || ""}">${val}</div>${sub ? `<div class="k-sub">${sub}</div>` : ""}\n  </div>`;
+  // KPIs informativos (sem filtro por clique), herdados da antiga faixa da aba Subs.
+  const kpiInfo = (label, val, sub) => `<div class="kpi">\n    <div class="k-label">${label}</div><div class="k-val">${val}</div><div class="k-sub">${sub}</div>\n  </div>`;
+  const pctAtivos = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
+  const bancosAtivos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
+  const gerentes = new Set(ativos.map(r => r.gerente_id).filter(x => x != null));
+  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan", `${pctAtivos}% do total`)}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompatíveis", incompativeis.length, "INCOMPATIVEL")}\n      ${kpiInfo("Bancos ativos", bancosAtivos.size, "com ao menos 1 sub")}\n      ${kpiInfo("Gerentes", gerentes.size, "carteiras distintas")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
     det: "regiao",
     bare: true
   })}\n          </div>\n        </div>\n      </div>\n      ${buildTowerCard("Por banco", porBanco, {
@@ -1114,7 +1119,7 @@ async function excluirSubDefinitivo() {
     montarFiltros();
     aplicarFiltros();
     renderPendentes();
-    renderKPIs();
+    atualizarKPIs();
     logHist("excluiu_sub", "substabelecidos", id, `Excluiu definitivamente o sub ${norm(r.nome_subs)} (${norm(r.banco)})`);
     toast("Substabelecido excluído definitivamente", "ok");
   } catch (e) {
@@ -1642,22 +1647,10 @@ async function exportarDetalhePDF() {
   }
 }
 
-function renderKPIs() {
-  const reais = state.rows.filter(isReal);
-  const ativos = reais.filter(r => norm(r.status).toUpperCase() === "ATIVO");
-  const inativos = reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
-  const pct = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
-  const bancos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
-  const gerentes = new Set(ativos.map(r => r.gerente_id).filter(x => x != null));
-  const porBanco = {};
-  ativos.forEach(r => {
-    const b = norm(r.banco) || "—";
-    porBanco[b] = (porBanco[b] || 0) + 1;
-  });
-  const top = Object.entries(porBanco).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxTop = top.length ? top[0][1] : 1;
-  const incompletos = reais.filter(r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco)).length;
-  $("kpis").innerHTML = `\n    <div class="kpi"><div class="k-label">Ativos</div><div class="k-val cyan">${ativos.length}</div><div class="k-sub">${pct}% do total</div></div>\n    <div class="kpi"><div class="k-label">Inativos</div><div class="k-val red">${inativos.length}</div><div class="k-sub">de ${reais.length} cadastros</div></div>\n    <div class="kpi"><div class="k-label">Bancos ativos</div><div class="k-val">${bancos.size}</div><div class="k-sub">com ao menos 1 sub</div></div>\n    <div class="kpi"><div class="k-label">Gerentes</div><div class="k-val">${gerentes.size}</div><div class="k-sub">carteiras distintas</div></div>\n    <div class="kpi"><div class="k-label">Cadastros incompletos</div><div class="k-val" style="color:var(--warn)">${incompletos}</div><div class="k-sub">sem gerente / código / status</div></div>\n    <div class="kpi wide">\n      <div class="k-label">Top bancos por ativos</div>\n      <div class="k-bars">\n        ${top.map(([b, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxTop * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("")}\n      </div>\n    </div>`;
+// Os KPIs vivem no Painel Sintético. Depois de mexer nos dados basta redesenhar
+// o painel quando ele estiver à vista — em outra aba, o switchTab já o refaz.
+function atualizarKPIs() {
+  if (state.gestor && $("viewPainel").style.display !== "none") renderPainel();
 }
 
 function setRazaoByCnpj(cnpj) {
@@ -1762,6 +1755,9 @@ function payloadDoForm() {
     nome_subs: G("f_sub"),
     cnpj_subs: g("f_cnpj_subs"),
     [CONFIG.COL_CNPJ_GRUPO]: g("f_cnpj"),
+    // Razão social gravada junto com o CNPJ: a tela resolve a empresa pelo CNPJ,
+    // mas a coluna precisa refletir o que foi escolhido no select.
+    [CONFIG.COL_EMPRESA_GRUPO]: g("f_razao"),
     banco: G("f_banco"),
     tipo_cadastro: G("f_tipo"),
     cod_loja_banco: G("f_codloja"),
@@ -1823,7 +1819,7 @@ async function salvarForm() {
     $("formOverlay").classList.remove("show");
     montarFiltros();
     aplicarFiltros();
-    renderKPIs();
+    atualizarKPIs();
     logHist("editou_sub", "substabelecidos", saved.id, `Editou sub ${norm(saved.nome_subs)} (${norm(saved.banco)})`);
     toast("Substabelecido atualizado", "ok");
   } catch (e) {
@@ -1876,7 +1872,7 @@ async function mudarStatus(id, novo) {
     const i = state.rows.findIndex(x => x.id === id);
     if (i > -1) state.rows[i] = saved;
     aplicarFiltros();
-    renderKPIs();
+    atualizarKPIs();
     const lbl = (STATUS_SUB[novo] || {}).label || novo;
     logHist("status_sub", "substabelecidos", id, `Alterou status de ${norm(saved.nome_subs)} para ${lbl}`);
     toast(`Status alterado para "${lbl}"`, "ok");
@@ -2183,7 +2179,6 @@ function entrarGestor() {
   $("sairBtn").style.display = "";
   $("novoBtn").style.display = "";
   $("thAcoes").style.display = "";
-  $("kpis").style.display = "grid";
   $("tabs").style.display = "flex";
   $("tabsCons").style.display = "none";
   $("notifWrap").style.display = "none";
@@ -2196,7 +2191,6 @@ function entrarGestor() {
   $("fldGerente").style.display = "";
   aplicarToggleFiltros();
   switchTab("painel");
-  renderKPIs();
   aplicarFiltros();
   checarAlertas();
   carregarDuvidas();
@@ -2215,8 +2209,6 @@ function sairGestor() {
   $("sairBtn").style.display = "none";
   $("novoBtn").style.display = "none";
   $("thAcoes").style.display = "none";
-  $("kpis").style.display = "none";
-  $("kpis").innerHTML = "";
   $("tabs").style.display = "none";
   $("tabsCons").style.display = "flex";
   $("agendaAlert").style.display = "none";
@@ -2975,7 +2967,7 @@ async function obsConcluir() {
     $("formOverlay").classList.remove("show");
     montarFiltros();
     aplicarFiltros();
-    renderKPIs();
+    atualizarKPIs();
     logHist("criou_sub", "substabelecidos", saved.id, `Criou sub ${norm(saved.nome_subs)} (${norm(saved.banco)})`);
     toast("Substabelecido criado", "ok");
   } catch (e) {
@@ -3750,6 +3742,7 @@ async function salvarEmpresa() {
   const id = state.editingEmpresaId;
   const anterior = id ? state.empresas.find(x => x.id === id) : null;
   const cnpjMudou = !!anterior && soDigitos(anterior.cnpj) !== soDigitos(cnpj);
+  const razaoMudou = !!anterior && norm(anterior.razao_social) !== maiusc(razao);
   const nVinc = anterior ? empresaSubsCount(anterior) : 0;
   if (cnpjMudou && nVinc && !confirm(`O CNPJ mudou e ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} usa${nVinc !== 1 ? "m" : ""} o CNPJ antigo.\n\nAtualizar também ${nVinc !== 1 ? "esses" : "esse"} ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} para o novo CNPJ?\n\nSe cancelar, nada será salvo.`)) return;
   const btn = $("empresaSalvar");
@@ -3777,9 +3770,10 @@ async function salvarEmpresa() {
     const saved = (await res.json())[0];
     if (!saved) throw new Error("Nada foi salvo. Verifique a policy de INSERT/UPDATE no Supabase.");
     let atualizados = 0;
-    if (cnpjMudou && nVinc) {
-      // Propaga o CNPJ novo para os subs. Agrupa pelos valores brutos gravados
-      // (o formato pode variar), assim resolve em uma ou duas chamadas.
+    if ((cnpjMudou || razaoMudou) && nVinc) {
+      // Propaga CNPJ e razão social novos para os subs. Agrupa pelos valores
+      // brutos gravados (o formato pode variar), assim resolve em uma ou duas
+      // chamadas.
       const antigo = soDigitos(anterior.cnpj);
       const alvo = state.rows.filter(isReal).filter(r => soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === antigo);
       for (const valor of [ ...new Set(alvo.map(r => r[CONFIG.COL_CNPJ_GRUPO])) ]) {
@@ -3790,13 +3784,15 @@ async function salvarEmpresa() {
             Prefer: "return=minimal"
           },
           body: JSON.stringify({
-            [CONFIG.COL_CNPJ_GRUPO]: cnpj
+            [CONFIG.COL_CNPJ_GRUPO]: cnpj,
+            [CONFIG.COL_EMPRESA_GRUPO]: saved.razao_social
           })
         });
         if (!up.ok) throw new Error(`Empresa salva, mas falhou ao atualizar os subs: HTTP ${up.status} — ${await up.text()}`);
       }
       alvo.forEach(r => {
         r[CONFIG.COL_CNPJ_GRUPO] = cnpj;
+        r[CONFIG.COL_EMPRESA_GRUPO] = saved.razao_social;
         atualizados++;
       });
     }
@@ -4081,7 +4077,7 @@ async function excluirColab(tipo, id) {
     renderColaboradores();
     montarFiltros();
     aplicarFiltros();
-    if (state.gestor) renderKPIs();
+    atualizarKPIs();
     logHist("excluiu_colaborador", COLAB_TABELA[tipo], id, `Excluiu ${COLAB_TIPOS[tipo].toLowerCase()} ${norm(r.nome)}${desvinculados ? ` (${desvinculados} sub(s) desvinculados)` : ""}`);
     toast(desvinculados ? `Colaborador excluído — ${desvinculados} sub(s) ficaram sem vínculo` : "Colaborador excluído", "ok");
   } catch (e) {
