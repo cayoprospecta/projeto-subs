@@ -13,6 +13,7 @@ const CONFIG = {
   TABLE_SUPERINTENDENTES: "superintendentes",
   TABLE_SUPERVISORES: "supervisores",
   TABLE_GERENTES: "gerentes_comerciais",
+  VIEW_GERENTES_PUB: "gerentes_publicos",
   AUTH_EMAIL_DOMAIN: "prospecta.local",
   CONSULTOR_EMAIL: "consultor@prospecta.local",
   PAGE_SIZE: 25
@@ -98,6 +99,10 @@ const REST_MSG = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_MENSAGENS}
 const REST_SUPERINTENDENTES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_SUPERINTENDENTES}`;
 const REST_SUPERVISORES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_SUPERVISORES}`;
 const REST_GERENTES = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.TABLE_GERENTES}`;
+
+// View sem dados pessoais (só id/nome/hierarquia). O modo consulta lê daqui;
+// a tabela real, com CPF, telefone e e-mail, é restrita ao gestor pela RLS.
+const REST_GERENTES_PUB = () => `${CONFIG.SUPABASE_URL}/rest/v1/${CONFIG.VIEW_GERENTES_PUB}`;
 
 const $ = id => document.getElementById(id);
 
@@ -499,23 +504,28 @@ async function carregar() {
   if (!state.sessions.gestor && !state.sessions.consultor) return;
   $("count").textContent = "carregando…";
   try {
+    // Empresas do grupo e agenda são exclusivas do gestor: no modo consulta
+    // a requisição nem é feita, para o dado não sair do servidor.
+    const soGestor = f => state.gestor ? f() : Promise.resolve(null);
     const [resSubs, resEmp, resBancos, resAgenda, resBancoVinc] = await Promise.all([ fetch(`${REST()}?select=*&order=id.asc`, {
       headers: H()
-    }), fetch(`${REST_EMP()}?select=id,razao_social,fantasia,cnpj&order=razao_social.asc`, {
+    }), soGestor(() => fetch(`${REST_EMP()}?select=*&order=razao_social.asc`, {
       headers: H()
-    }), fetch(`${REST_BANCOS()}?select=*&order=nome_banco.asc`, {
+    })), fetch(`${REST_BANCOS()}?select=*&order=nome_banco.asc`, {
       headers: H()
-    }), fetch(`${REST_AGENDA()}?select=*&order=data.asc,hora.asc`, {
+    }), soGestor(() => fetch(`${REST_AGENDA()}?select=*&order=data.asc,hora.asc`, {
       headers: H()
-    }), fetch(`${REST_BANCO_VINCULOS()}?select=id,banco_id,empresa_grupo_id,codigo_corban,tipo_sub,status&status=eq.ATIVO`, {
+    })), fetch(`${REST_BANCO_VINCULOS()}?select=id,banco_id,empresa_grupo_id,codigo_corban,tipo_sub,status&status=eq.ATIVO`, {
       headers: H()
     }) ]);
     if (!resSubs.ok) throw new Error(`subs HTTP ${resSubs.status} — ${await resSubs.text()}`);
     state.rows = await resSubs.json();
-    if (resEmp.ok) {
+    if (!state.gestor) {
+      state.empresas = [];
+    } else if (resEmp && resEmp.ok) {
       state.empresas = await resEmp.json();
       montarEmpresasSelect();
-    } else {
+    } else if (resEmp) {
       console.warn("empresas_grupo:", resEmp.status, await resEmp.text());
       toast("Empresas do grupo não carregaram (RLS?).", "err");
     }
@@ -524,10 +534,12 @@ async function carregar() {
     } else {
       console.warn("bancos:", resBancos.status, await resBancos.text());
     }
-    if (resAgenda.ok) {
+    if (!state.gestor) {
+      state.agenda = [];
+    } else if (resAgenda && resAgenda.ok) {
       state.agenda = await resAgenda.json();
       checarAlertas();
-    } else {
+    } else if (resAgenda) {
       console.warn("agenda:", resAgenda.status, await resAgenda.text());
     }
     if (resBancoVinc.ok) {
@@ -2167,7 +2179,9 @@ function entrarGestor() {
   aplicarFiltros();
   checarAlertas();
   carregarDuvidas();
-  carregarColaboradores();
+  // force: o modo consulta pode ter carregado a view reduzida; o gestor
+  // precisa da tabela completa (com código, CPF, telefone e e-mail).
+  carregarColaboradores(true);
   toast(`Bem-vindo(a), ${escapeHtml(state.gestorNome || "")}`, "ok");
 }
 
@@ -2279,7 +2293,12 @@ function abrirBancoInfo(id) {
   const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
   $("bancoInfoTitle").textContent = norm(b.nome_banco) || "Banco";
   const grid = pares => `<div class="sub-grid">\n    ${pares.map(([lab, val]) => `<div class="sub-field">\n      <span class="sf-label">${escapeHtml(lab)}</span>\n      <span class="sf-val${/CNPJ|Cód\./.test(lab) ? " mono" : ""}">${escapeHtml(val || "—")}</span>\n    </div>`).join("")}\n  </div>`;
-  $("bancoInfoBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${st === "ATIVO" ? "ok" : "off"}">${st}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.codigo_corban) || "—")}</b><span>cód. corban</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.tipo_sub) || "—")}</b><span>tipo</span></div>\n    </div>\n\n    <div class="det-sec">Empresa credenciada</div>\n    ${grid([ [ "Razão social", emp ? norm(emp.razao_social) : "" ], [ "Nome fantasia", emp ? norm(emp.fantasia) : "" ], [ "CNPJ", emp ? norm(emp.cnpj) : "" ] ])}\n\n    <div class="det-sec">Contato do banco</div>\n    ${grid([ [ "Gerente", norm(b.gerente_banco) ], [ "Contato", norm(b.contato_gerente) ], [ "E-mail", norm(b.email_gerente) ], [ "Suporte", norm(b.suporte_banco) ] ])}\n\n    ${!emp ? '<div class="dl-empty">Nenhum vínculo ativo cadastrado pra este banco em <b>banco_vinculos</b>.</div>' : ""}\n  `;
+  // A empresa credenciada só é exibida ao gestor — no modo consulta a tabela
+  // de empresas nem é carregada, então a seção sairia vazia e o aviso de
+  // "sem vínculo" seria enganoso.
+  const secEmpresa = state.gestor ? `\n    <div class="det-sec">Empresa credenciada</div>\n    ${grid([ [ "Razão social", emp ? norm(emp.razao_social) : "" ], [ "Nome fantasia", emp ? norm(emp.fantasia) : "" ], [ "CNPJ", emp ? norm(emp.cnpj) : "" ] ])}\n` : "";
+  const avisoVinculo = state.gestor && !emp ? '<div class="dl-empty">Nenhum vínculo ativo cadastrado pra este banco em <b>banco_vinculos</b>.</div>' : "";
+  $("bancoInfoBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${st === "ATIVO" ? "ok" : "off"}">${st}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.codigo_corban) || "—")}</b><span>cód. corban</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.tipo_sub) || "—")}</b><span>tipo</span></div>\n    </div>\n${secEmpresa}\n    <div class="det-sec">Contato do banco</div>\n    ${grid([ [ "Gerente", norm(b.gerente_banco) ], [ "Contato", norm(b.contato_gerente) ], [ "E-mail", norm(b.email_gerente) ], [ "Suporte", norm(b.suporte_banco) ] ])}\n\n    ${avisoVinculo}\n  `;
   $("bancoInfoOverlay").classList.add("show");
 }
 
@@ -3547,15 +3566,16 @@ async function carregarColaboradores(force) {
       headers: H()
     }), fetch(`${REST_SUPERVISORES()}?select=*&order=nome.asc`, {
       headers: H()
-    }), fetch(`${REST_GERENTES()}?select=*&order=nome.asc`, {
+    }), fetch(`${(state.gestor ? REST_GERENTES() : REST_GERENTES_PUB())}?select=*&order=nome.asc`, {
       headers: H()
     }) ]);
-    if (!rSup.ok) throw new Error(`superintendentes HTTP ${rSup.status} — ${await rSup.text()}`);
-    if (!rSv.ok) throw new Error(`supervisores HTTP ${rSv.status} — ${await rSv.text()}`);
-    if (!rGer.ok) throw new Error(`gerentes HTTP ${rGer.status} — ${await rGer.text()}`);
-    state.superintendentes = await rSup.json();
-    state.supervisores = await rSv.json();
-    state.gerentes = await rGer.json();
+    // Cada lista é tratada em separado: se uma falhar, as outras continuam
+    // valendo (antes, um erro em qualquer uma zerava as três).
+    const erros = [];
+    if (rSup.ok) state.superintendentes = await rSup.json(); else erros.push(`superintendentes HTTP ${rSup.status} — ${await rSup.text()}`);
+    if (rSv.ok) state.supervisores = await rSv.json(); else erros.push(`supervisores HTTP ${rSv.status} — ${await rSv.text()}`);
+    if (rGer.ok) state.gerentes = await rGer.json(); else erros.push(`${state.gestor ? CONFIG.TABLE_GERENTES : CONFIG.VIEW_GERENTES_PUB} HTTP ${rGer.status} — ${await rGer.text()}`);
+    if (erros.length) throw new Error(erros.join(" | "));
     state.colabCarregado = true;
     // 200 com lista vazia = tabela existe mas nada voltou; quase sempre RLS
     // sem policy de SELECT ou falta de GRANT para o papel autenticado.
