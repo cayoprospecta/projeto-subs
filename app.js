@@ -64,6 +64,7 @@ const state = {
   editingAgendaId: null,
   alertasVistos: false,
   painelFiltro: "TODOS",
+  detalheStatus: "TODOS",
   sortCol: null,
   sortDir: 1,
   duvidas: [],
@@ -918,10 +919,10 @@ function renderPainel() {
   const pendentes = reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
   const andamento = reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
   const incompFn = r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
-  const incompativeis = reais.filter(incompFn);
+  const incompletos = reais.filter(incompFn);
   const filtro = state.painelFiltro || "TODOS";
   let base = reais;
-  if (filtro === "ATIVO") base = ativos; else if (filtro === "INATIVO") base = inativos; else if (filtro === "PENDENTE") base = pendentes; else if (filtro === "EM_ANDAMENTO") base = andamento; else if (filtro === "INCOMPATIVEL") base = incompativeis;
+  if (filtro === "ATIVO") base = ativos; else if (filtro === "INATIVO") base = inativos; else if (filtro === "PENDENTE") base = pendentes; else if (filtro === "EM_ANDAMENTO") base = andamento; else if (filtro === "INCOMPLETO") base = incompletos;
   const porBanco = contarPor(base, r => norm(r.banco), "Sem banco");
   const porUF = {}, porRegiao = {};
   base.forEach(r => {
@@ -937,7 +938,7 @@ function renderPainel() {
   const pctAtivos = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
   const bancosAtivos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
   const gerentes = new Set(ativos.map(r => r.gerente_id).filter(x => x != null));
-  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan", `${pctAtivos}% do total`)}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompatíveis", incompativeis.length, "INCOMPATIVEL")}\n      ${kpiInfo("Bancos ativos", bancosAtivos.size, "com ao menos 1 sub")}\n      ${kpiInfo("Gerentes", gerentes.size, "carteiras distintas")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
+  $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan", `${pctAtivos}% do total`)}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompletos", incompletos.length, "INCOMPLETO")}\n      ${kpiInfo("Bancos ativos", bancosAtivos.size, "com ao menos 1 sub")}\n      ${kpiInfo("Gerentes", gerentes.size, "carteiras distintas")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
     det: "regiao",
     bare: true
   })}\n          </div>\n        </div>\n      </div>\n      ${buildTowerCard("Por banco", porBanco, {
@@ -951,19 +952,43 @@ function renderPainel() {
   montarMapaBrasil(porUF);
 }
 
+// Predicado dos filtros do painel — os mesmos usados pelos KPIs e pelas barras
+// de status dos modais de detalhe.
+function filtroPainel(f) {
+  if (f === "INCOMPLETO") return r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco);
+  if (f && f !== "TODOS") return r => norm(r.status).toUpperCase() === f;
+  return () => true;
+}
+
 function painelBase() {
-  const reais = state.rows.filter(isReal);
-  const f = state.painelFiltro || "TODOS";
-  if (f === "ATIVO") return reais.filter(r => norm(r.status).toUpperCase() === "ATIVO");
-  if (f === "INATIVO") return reais.filter(r => norm(r.status).toUpperCase() === "INATIVO");
-  if (f === "PENDENTE") return reais.filter(r => norm(r.status).toUpperCase() === "PENDENTE");
-  if (f === "EM_ANDAMENTO") return reais.filter(r => norm(r.status).toUpperCase() === "EM_ANDAMENTO");
-  if (f === "INCOMPATIVEL") return reais.filter(r => !r.gerente_id || !norm(r.status) || !norm(r.cod_substabelecido) && !norm(r.cod_loja_banco));
-  return reais;
+  return state.rows.filter(isReal).filter(filtroPainel(state.painelFiltro || "TODOS"));
+}
+
+const DETALHE_STATUS = [ [ "TODOS", "Total" ], [ "ATIVO", "Ativos" ], [ "PENDENTE", "Pendentes" ], [ "EM_ANDAMENTO", "Em andamento" ], [ "INATIVO", "Inativos" ], [ "INCOMPLETO", "Incompletos" ] ];
+
+// Base dos modais de detalhe: ignora o filtro dos KPIs e usa o da barra própria
+// do modal (que abre já sincronizada com ele), para os dois não se anularem.
+function detalheBase() {
+  return state.rows.filter(isReal).filter(filtroPainel(state.detalheStatus || "TODOS"));
+}
+
+function barraStatusDetalhe() {
+  const atual = state.detalheStatus || "TODOS";
+  return `<div class="det-status">\n    ${DETALHE_STATUS.map(([ k, lab ]) => `<button class="det-toggle-btn ${atual === k ? "active" : ""}" data-det-status="${k}">${lab}</button>`).join("")}\n  </div>`;
+}
+
+function renderDetalheBanco(valor) {
+  const base = detalheBase();
+  const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
+  const subs = base.filter(r => (norm(r.banco) || "Sem banco") === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
+  const ativos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
+  $("detalheKicker").textContent = "Banco";
+  $("detalheTitle").textContent = valor;
+  $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec det-sec-toggle">Substabelecidos deste banco</div>\n      ${barraStatusDetalhe()}\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido neste filtro.</div>'}\n      </div>`;
 }
 
 function renderDetalheUf(valor) {
-  const base = painelBase();
+  const base = detalheBase();
   const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
   const subs = valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === valor);
   const porBanco = {};
@@ -977,8 +1002,8 @@ function renderDetalheUf(valor) {
   $("detalheKicker").textContent = "Unidade federativa";
   $("detalheTitle").textContent = valor === "Não identificado" ? "UF não identificada" : valor + (UF_REGIAO[valor] ? ` · ${UF_REGIAO[valor]}` : "");
   const bancosBlock = `<div class="k-bars det-bars">\n    ${entries.map(([b, n]) => `<div class="k-bar">\n      <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n      <span class="track"><span class="fill" style="width:${Math.round(n / max * 100)}%"></span></span>\n      <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n  </div>`;
-  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n  </div>`;
-  $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${view === "subs" ? subsBlock : bancosBlock}`;
+  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido neste filtro.</div>'}\n  </div>`;
+  $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${barraStatusDetalhe()}\n    ${view === "subs" ? subsBlock : bancosBlock}`;
 }
 
 function abrirDetalhePainel(tipo, valor) {
@@ -987,13 +1012,12 @@ function abrirDetalhePainel(tipo, valor) {
     tipo: tipo,
     valor: valor
   };
+  // A barra de status do modal abre alinhada com o KPI selecionado no painel;
+  // daí em diante ela manda sozinha, sem depender do filtro de fora.
+  state.detalheStatus = state.painelFiltro || "TODOS";
   const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
   if (tipo === "banco") {
-    const subs = base.filter(r => (norm(r.banco) || "Sem banco") === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
-    const ativos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
-    $("detalheKicker").textContent = "Banco";
-    $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""}</span></div>\n        <div class="det-kpi"><b class="ok">${ativos}</b><span>ativos</span></div>\n        <div class="det-kpi"><b class="off">${subs.length - ativos}</b><span>demais</span></div>\n      </div>\n      <div class="det-sec">Substabelecidos deste banco</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>CNPJ <b>${escapeHtml(norm(r.cnpj_subs) || "—")}</b></span>\n              <span>Tipo <b>${escapeHtml(norm(r.tipo_cadastro) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    renderDetalheBanco(valor);
   } else if (tipo === "uf") {
     state.ufDetalheView = "bancos";
     renderDetalheUf(valor);
@@ -1364,7 +1388,7 @@ async function exportarDetalhePDF() {
       PENDENTE: "Somente pendentes",
       EM_ANDAMENTO: "Somente em andamento",
       INATIVO: "Somente inativos",
-      INCOMPATIVEL: "Somente incompatíveis"
+      INCOMPLETO: "Somente incompletos"
     }[state.painelFiltro || "TODOS"];
     const agora = (new Date).toLocaleString("pt-BR", {
       timeZone: "America/Sao_Paulo",
@@ -4496,6 +4520,13 @@ function bind() {
     if (toggle) {
       state.ufDetalheView = toggle.dataset.ufView;
       renderDetalheUf(state.detalheAtual.valor);
+      return;
+    }
+    const st = e.target.closest("[data-det-status]");
+    if (st) {
+      state.detalheStatus = st.dataset.detStatus;
+      const d = state.detalheAtual || {};
+      if (d.tipo === "uf") renderDetalheUf(d.valor); else if (d.tipo === "banco") renderDetalheBanco(d.valor);
       return;
     }
     const item = e.target.closest("[data-rowid]");

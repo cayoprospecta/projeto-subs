@@ -466,6 +466,10 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .det-toggle-btn:last-child{border-right:none}
 .det-toggle-btn:hover{background:var(--panel2);color:var(--txt)}
 .det-toggle-btn.active{background:var(--cyan);color:#fff}
+/* Filtro de status dentro do modal de detalhe: quebra em varias linhas em
+   telas estreitas, por isso cada botao tem borda propria. */
+.det-status{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 2px}
+.det-status .det-toggle-btn{border:1px solid var(--line2);padding:7px 12px;font-size:11.5px;cursor:pointer}
 
 .prod-filtros{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;padding:16px 20px;margin-bottom:22px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .prod-field-sub{position:relative;flex:1 1 320px;min-width:260px}
