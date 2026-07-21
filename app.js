@@ -579,6 +579,14 @@ function bancoPorNome(nome) {
   return k ? state.bancos.find(b => chaveNome(b.nome_banco) === k) || null : null;
 }
 
+// Nome do banco do sub resolvido pela chave, nunca pelo texto gravado: assim
+// renomear o banco reflete na hora em toda a tela. O texto so' e' usado como
+// reserva para o sub sem banco_id (CEF INCONTA e KOVR).
+function nomeBanco(r) {
+  const b = r.banco_id ? state.bancos.find(x => x.id === r.banco_id) : null;
+  return b ? norm(b.nome_banco) : norm(r.banco);
+}
+
 function empresasDoBanco(bancoId) {
   if (!bancoId) return [];
   const ids = state.bancoVinculos.filter(v => v.banco_id === bancoId).map(v => v.empresa_grupo_id);
@@ -738,7 +746,7 @@ function passaFiltrosExcetoBanco(r) {
   if (supv && String(supervisorDoSub(r)) !== supv) return false;
   if (ger && String(r.gerente_id) !== ger) return false;
   if (q) {
-    const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
+    const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, nomeBanco(r) ].map(lower).join(" ");
     if (!blob.includes(q)) return false;
   }
   return true;
@@ -751,7 +759,7 @@ function montarFiltroBancos() {
   const el = $("fBanco");
   if (!el) return;
   const atual = el.value;
-  const nomes = [ ...new Set(state.rows.filter(isReal).filter(passaFiltrosExcetoBanco).map(r => norm(r.banco)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const nomes = [ ...new Set(state.rows.filter(isReal).filter(passaFiltrosExcetoBanco).map(r => nomeBanco(r)).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   el.innerHTML = '<option value="">Todos</option>' + nomes.map(v => `<option>${escapeHtml(v)}</option>`).join("");
   el.value = atual && nomes.includes(atual) ? atual : "";
 }
@@ -761,7 +769,7 @@ function aplicarFiltros() {
   const banco = $("fBanco").value;
   state.aguardandoBanco = false;
   state.filtered = state.rows.filter(isReal).filter(r => {
-    if (banco && norm(r.banco) !== banco) return false;
+    if (banco && nomeBanco(r) !== banco) return false;
     return passaFiltrosExcetoBanco(r);
   });
   ordenarFiltrados();
@@ -777,8 +785,10 @@ function ordenarFiltrados() {
   const col = state.sortCol;
   if (!col) return;
   const dir = state.sortDir;
+  // O banco sai da chave, como no resto da tela; os demais campos são do sub.
+  const valor = r => col === "banco" ? nomeBanco(r) : norm(r[col]);
   state.filtered.sort((a, b) => {
-    const va = norm(a[col]), vb = norm(b[col]);
+    const va = valor(a), vb = valor(b);
     if (!va && !vb) return 0;
     if (!va) return 1;
     if (!vb) return -1;
@@ -820,7 +830,7 @@ function linhaSubTr(r) {
   const acoes = state.gestor ? `<td><div class="rowact">\n        <button class="btn sm" data-edit="${r.id}">Editar</button>\n        <div class="status-menu-wrap">\n          <button class="btn sm" data-statusmenu="${r.id}">Alterar status</button>\n        </div>\n      </div></td>` : "";
   const nome = escapeHtml(norm(r.nome_subs) || "—");
   const nomeCell = state.gestor ? `<td class="empresa"><span class="linklike" data-obs="${r.id}" title="Observações">${nome}</span>${temObs(r) ? ' <span class="obs-dot" title="tem observação">●</span>' : ""}</td>` : `<td class="empresa">${nome}</td>`;
-  return `<tr data-rowid="${r.id}" title="Ver ficha completa">\n      ${nomeCell}\n      <td class="mono">${escapeHtml(norm(r.cnpj_subs) || "—")}</td>\n      <td>${escapeHtml(norm(r.banco) || "—")}</td>\n      <td>${escapeHtml(norm(r.tipo_cadastro) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_loja_banco) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_substabelecido) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_parceiro) || "—")}</td>\n      <td>${badge}</td>\n      ${acoes}\n    </tr>`;
+  return `<tr data-rowid="${r.id}" title="Ver ficha completa">\n      ${nomeCell}\n      <td class="mono">${escapeHtml(norm(r.cnpj_subs) || "—")}</td>\n      <td>${escapeHtml(nomeBanco(r) || "—")}</td>\n      <td>${escapeHtml(norm(r.tipo_cadastro) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_loja_banco) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_substabelecido) || "—")}</td>\n      <td class="mono">${escapeHtml(norm(r.cod_parceiro) || "—")}</td>\n      <td>${badge}</td>\n      ${acoes}\n    </tr>`;
 }
 
 function renderTabela() {
@@ -850,7 +860,7 @@ function renderPendentes() {
   let list = state.rows.filter(isReal).filter(r => [ "PENDENTE", "EM_ANDAMENTO" ].includes(norm(r.status).toUpperCase()));
   if (q) {
     list = list.filter(r => {
-      const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, r.banco ].map(lower).join(" ");
+      const blob = [ r.nome_subs, r.cnpj_subs, r.cod_loja_banco, r.cod_substabelecido, r.cod_parceiro, r.responsavel_empresa, nomeBanco(r) ].map(lower).join(" ");
       return blob.includes(q);
     });
   }
@@ -979,7 +989,7 @@ function renderPainel() {
   const filtro = state.painelFiltro || "TODOS";
   let base = reais;
   if (filtro === "ATIVO") base = ativos; else if (filtro === "INATIVO") base = inativos; else if (filtro === "PENDENTE") base = pendentes; else if (filtro === "EM_ANDAMENTO") base = andamento; else if (filtro === "INCOMPLETO") base = incompletos;
-  const porBanco = contarPor(base, r => norm(r.banco), "Sem banco");
+  const porBanco = contarPor(base, r => nomeBanco(r), "Sem banco");
   const porUF = {}, porRegiao = {};
   base.forEach(r => {
     const uf = ufDoSub(r);
@@ -992,7 +1002,7 @@ function renderPainel() {
   // KPIs informativos (sem filtro por clique), herdados da antiga faixa da aba Subs.
   const kpiInfo = (label, val, sub) => `<div class="kpi">\n    <div class="k-label">${label}</div><div class="k-val">${val}</div><div class="k-sub">${sub}</div>\n  </div>`;
   const pctAtivos = reais.length ? Math.round(ativos.length / reais.length * 100) : 0;
-  const bancosAtivos = new Set(ativos.map(r => norm(r.banco)).filter(Boolean));
+  const bancosAtivos = new Set(ativos.map(r => nomeBanco(r)).filter(Boolean));
   const gerentes = new Set(ativos.map(r => r.gerente_id).filter(x => x != null));
   $("viewPainel").innerHTML = `\n    <section class="kpis">\n      ${kpi("Total de cadastros", reais.length, "TODOS")}\n      ${kpi("Ativos", ativos.length, "ATIVO", "cyan", `${pctAtivos}% do total`)}\n      ${kpi("Pendentes", pendentes.length, "PENDENTE")}\n      ${kpi("Em andamento", andamento.length, "EM_ANDAMENTO")}\n      ${kpi("Inativos", inativos.length, "INATIVO", "red")}\n      ${kpi("Incompletos", incompletos.length, "INCOMPLETO")}\n      ${kpiInfo("Bancos ativos", bancosAtivos.size, "com ao menos 1 sub")}\n      ${kpiInfo("Gerentes", gerentes.size, "carteiras distintas")}\n    </section>\n    <div class="painel-grid">\n      <div class="painel-card wide painel-split-card">\n        <div class="painel-split">\n          <div class="painel-split-col">\n            <div class="painel-card-title">Mapa do Brasil <span class="painel-mapa-hint">clique em um estado para ver os subs</span></div>\n            <div id="mapaBrasil" class="mapa-brasil"></div>\n          </div>\n          <div class="painel-split-col">\n            ${buildRadarCard("Por região (UF do Cód. sub)", porRegiao, {
     det: "regiao",
@@ -1036,7 +1046,7 @@ function barraStatusDetalhe() {
 function renderDetalheBanco(valor) {
   const base = detalheBase();
   const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
-  const subs = base.filter(r => (norm(r.banco) || "Sem banco") === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
+  const subs = base.filter(r => (nomeBanco(r) || "Sem banco") === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
   const ativos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
   $("detalheKicker").textContent = "Banco";
   $("detalheTitle").textContent = valor;
@@ -1049,7 +1059,7 @@ function renderDetalheUf(valor) {
   const subs = valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === valor);
   const porBanco = {};
   subs.forEach(r => {
-    const b = norm(r.banco) || "Sem banco";
+    const b = nomeBanco(r) || "Sem banco";
     porBanco[b] = (porBanco[b] || 0) + 1;
   });
   const entries = Object.entries(porBanco).sort((a, b) => b[1] - a[1]);
@@ -1058,7 +1068,7 @@ function renderDetalheUf(valor) {
   $("detalheKicker").textContent = "Unidade federativa";
   $("detalheTitle").textContent = valor === "Não identificado" ? "UF não identificada" : valor + (UF_REGIAO[valor] ? ` · ${UF_REGIAO[valor]}` : "");
   const bancosBlock = `<div class="k-bars det-bars">\n    ${entries.map(([b, n]) => `<div class="k-bar">\n      <span class="n" title="${escapeHtml(b)}">${escapeHtml(b)}</span>\n      <span class="track"><span class="fill" style="width:${Math.round(n / max * 100)}%"></span></span>\n      <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n  </div>`;
-  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido neste filtro.</div>'}\n  </div>`;
+  const subsBlock = `<div class="det-list">\n    ${subs.slice().sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR")).map(r => `\n      <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n        <div class="det-main">\n          <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n          ${badgeDe(r)}\n        </div>\n        <div class="det-meta">\n          <span>Banco <b>${escapeHtml(nomeBanco(r) || "—")}</b></span>\n          <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n          <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n        </div>\n      </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido neste filtro.</div>'}\n  </div>`;
   $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${barraStatusDetalhe()}\n    ${view === "subs" ? subsBlock : bancosBlock}`;
 }
 
@@ -1088,7 +1098,7 @@ function abrirDetalhePainel(tipo, valor) {
     const maxUF = entriesUF.length ? entriesUF[0][1] : 1;
     $("detalheKicker").textContent = "Região";
     $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(norm(r.banco) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(nomeBanco(r) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
   } else return;
   $("detalheOverlay").classList.add("show");
 }
@@ -1104,7 +1114,7 @@ function camposFichaSub(r) {
   const uf = ufDoSub(r);
   return {
     identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", emp ? norm(emp.razao_social) : "" ], [ "CNPJ do grupo", norm(r[CONFIG.COL_CNPJ_GRUPO]) ] ],
-    vinculo: [ [ "Banco", norm(r.banco) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
+    vinculo: [ [ "Banco", nomeBanco(r) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
     gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Superintendente", nomeSuperintendente(superintendenteDoSub(r)) ], [ "Supervisor", nomeSupervisor(supervisorDoSub(r)) ], [ "Gerente", nomeGerente(r.gerente_id) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
   };
 }
@@ -1121,7 +1131,7 @@ function abrirFichaSub(id) {
   const grid = pares => `<div class="sub-grid">\n    ${pares.map(([lab, val]) => `<div class="sub-field">\n      <span class="sf-label">${escapeHtml(lab)}</span>\n      <span class="sf-val${/CNPJ|Cód\./.test(lab) ? " mono" : ""}">${escapeHtml(val || "—")}</span>\n    </div>`).join("")}\n  </div>`;
   $("subBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${(STATUS_SUB[stU] || {
     classe: "none"
-  }).classe}">${escapeHtml((STATUS_SUB[stU] || {}).label || "—")}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(r.banco) || "—")}</b><span>banco</span></div>\n      <div class="det-kpi sub-box"><b>${uf || "—"}</b><span>UF</span></div>\n      <div class="det-kpi sub-box"><b>${obs.length}</b><span>observaç${obs.length === 1 ? "ão" : "ões"}</span></div>\n    </div>\n\n    <div class="det-sec">Identificação</div>\n    ${grid(campos.identificacao)}\n\n    <div class="det-sec">Vínculo bancário</div>\n    ${grid(campos.vinculo)}\n\n    <div class="det-sec">Gestão comercial</div>\n    ${grid(campos.gestao)}\n\n    ${obs.length ? `\n      <div class="det-sec">Observações</div>\n      <div class="sub-obs-list">\n        ${obs.map(b => `<div class="obs-block">\n          <div class="obs-head">\n            <span class="obs-quem">${escapeHtml(norm(b.quem) || "—")}</span>\n            <span class="obs-quando">${escapeHtml(b.em ? fmtData(b.em) : "")}</span>\n          </div>\n          <div class="obs-text">${escapeHtml(norm(b.texto))}</div>\n        </div>`).join("")}\n      </div>` : ""}\n  `;
+  }).classe}">${escapeHtml((STATUS_SUB[stU] || {}).label || "—")}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(nomeBanco(r) || "—")}</b><span>banco</span></div>\n      <div class="det-kpi sub-box"><b>${uf || "—"}</b><span>UF</span></div>\n      <div class="det-kpi sub-box"><b>${obs.length}</b><span>observaç${obs.length === 1 ? "ão" : "ões"}</span></div>\n    </div>\n\n    <div class="det-sec">Identificação</div>\n    ${grid(campos.identificacao)}\n\n    <div class="det-sec">Vínculo bancário</div>\n    ${grid(campos.vinculo)}\n\n    <div class="det-sec">Gestão comercial</div>\n    ${grid(campos.gestao)}\n\n    ${obs.length ? `\n      <div class="det-sec">Observações</div>\n      <div class="sub-obs-list">\n        ${obs.map(b => `<div class="obs-block">\n          <div class="obs-head">\n            <span class="obs-quem">${escapeHtml(norm(b.quem) || "—")}</span>\n            <span class="obs-quando">${escapeHtml(b.em ? fmtData(b.em) : "")}</span>\n          </div>\n          <div class="obs-text">${escapeHtml(norm(b.texto))}</div>\n        </div>`).join("")}\n      </div>` : ""}\n  `;
   $("subDelBtn").style.display = state.gestor ? "" : "none";
   $("subOverlay").classList.add("show");
 }
@@ -1200,7 +1210,7 @@ async function excluirSubDefinitivo() {
     aplicarFiltros();
     renderPendentes();
     atualizarKPIs();
-    logHist("excluiu_sub", "substabelecidos", id, `Excluiu definitivamente o sub ${norm(r.nome_subs)} (${norm(r.banco)})`);
+    logHist("excluiu_sub", "substabelecidos", id, `Excluiu definitivamente o sub ${norm(r.nome_subs)} (${nomeBanco(r)})`);
     toast("Substabelecido excluído definitivamente", "ok");
   } catch (e) {
     console.error(e);
@@ -1488,7 +1498,7 @@ async function exportarTabelaSubsPDF() {
           norm(r.nome_subs) || "—",
           norm(r.cnpj_subs) || "—",
           e ? norm(e.razao_social) : norm(r[CONFIG.COL_EMPRESA_GRUPO]) || "—",
-          norm(r.banco) || "—",
+          nomeBanco(r) || "—",
           norm(r.tipo_cadastro) || "—",
           norm(r.cod_substabelecido) || "—",
           nomeGerente(r.gerente_id) || "—",
@@ -1669,7 +1679,7 @@ async function exportarDetalhePDF() {
     };
     let nomeArq;
     if (det.tipo === "banco") {
-      const subs = base.filter(r => (norm(r.banco) || "Sem banco") === det.valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
+      const subs = base.filter(r => (nomeBanco(r) || "Sem banco") === det.valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
       const nAtivos = subs.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
       cabecalho("Relatório · Banco", det.valor);
       const yFim = resumo([ {
@@ -1722,7 +1732,7 @@ async function exportarDetalhePDF() {
       const subs = det.valor === "Não identificado" ? base.filter(r => !ufDoSub(r)) : base.filter(r => ufDoSub(r) === det.valor);
       const porBanco = {};
       subs.forEach(r => {
-        const b = norm(r.banco) || "Sem banco";
+        const b = nomeBanco(r) || "Sem banco";
         porBanco[b] = (porBanco[b] || 0) + 1;
       });
       const entries = Object.entries(porBanco).sort((a, b) => b[1] - a[1]);
@@ -1804,7 +1814,7 @@ async function exportarDetalhePDF() {
       doc.autoTable(Object.assign({}, tabelaBase, {
         startY: doc.lastAutoTable.finalY + 10,
         head: [ [ "#", "Nome do sub", "UF", "Banco", "Status" ] ],
-        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", ufDoSub(r) || "—", norm(r.banco) || "—", norm(r.status).toUpperCase() || "—" ]),
+        body: subs.map((r, i) => [ i + 1, norm(r.nome_subs) || "—", ufDoSub(r) || "—", nomeBanco(r) || "—", norm(r.status).toUpperCase() || "—" ]),
         columnStyles: {
           0: {
             cellWidth: 9,
@@ -1881,8 +1891,8 @@ function abrirLoteEmpresa() {
   const alvos = subsDoLote();
   if (!alvos.length) return;
   // Se o filtro atual isolou um banco so, oferece apenas as empresas dele.
-  const bancosAlvo = [ ...new Set(alvos.map(r => chaveNome(r.banco))) ];
-  const banco = bancosAlvo.length === 1 ? bancoPorNome(alvos[0].banco) : null;
+  const bancosAlvo = [ ...new Set(alvos.map(r => chaveNome(nomeBanco(r)))) ];
+  const banco = bancosAlvo.length === 1 ? bancoPorNome(nomeBanco(alvos[0])) : null;
   const lista = banco ? empresasDoBanco(banco.id) : [];
   const fonte = lista.length ? lista : state.empresas;
   $("loteResumo").innerHTML = `Serão alterados <b>${alvos.length}</b> substabelecido${alvos.length !== 1 ? "s" : ""} sem empresa, do resultado filtrado atual.` + (bancosAlvo.length > 1 ? ` <b>Atenção:</b> o filtro inclui ${bancosAlvo.length} bancos diferentes.` : "");
@@ -1979,7 +1989,7 @@ function abrirForm(id) {
   set("f_cnpj", r[CONFIG.COL_CNPJ_GRUPO]);
   // Banco antes da empresa: e' o banco que define quais empresas sao possiveis.
   preencherBancosForm();
-  setBanco(r.banco);
+  setBanco(nomeBanco(r));
   montarRazaoSelect(r.empresa_grupo_id || empresaIdPorCnpj(r[CONFIG.COL_CNPJ_GRUPO]));
   setTipo(r.tipo_cadastro);
   set("f_codloja", r.cod_loja_banco);
@@ -2108,7 +2118,7 @@ async function salvarForm() {
     montarFiltros();
     aplicarFiltros();
     atualizarKPIs();
-    logHist("editou_sub", "substabelecidos", saved.id, `Editou sub ${norm(saved.nome_subs)} (${norm(saved.banco)})`);
+    logHist("editou_sub", "substabelecidos", saved.id, `Editou sub ${norm(saved.nome_subs)} (${nomeBanco(saved)})`);
     toast("Substabelecido atualizado", "ok");
   } catch (e) {
     console.error(e);
@@ -3399,7 +3409,7 @@ async function obsConcluir() {
     montarFiltros();
     aplicarFiltros();
     atualizarKPIs();
-    logHist("criou_sub", "substabelecidos", saved.id, `Criou sub ${norm(saved.nome_subs)} (${norm(saved.banco)})`);
+    logHist("criou_sub", "substabelecidos", saved.id, `Criou sub ${norm(saved.nome_subs)} (${nomeBanco(saved)})`);
     toast("Substabelecido criado", "ok");
   } catch (e) {
     console.error(e);
