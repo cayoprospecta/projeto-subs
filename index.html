@@ -102,6 +102,10 @@
           <label>Buscar</label>
           <input id="fBusca" type="text" placeholder="Empresa, CNPJ, código, responsável…" autocomplete="off">
         </div>
+        <div class="field" id="fldEmpresa" style="display:none">
+          <label>Empresa (CNPJ)</label>
+          <select id="fEmpresa"><option value="">Todas</option></select>
+        </div>
         <div class="field">
           <label>Banco</label>
           <select id="fBanco"><option value="">Todos</option></select>
@@ -183,6 +187,8 @@
         <span class="count" id="count">—</span>
         <div class="spacer"></div>
         <button class="btn sm" id="toggleFiltrosBtn">Mostrar filtros</button>
+        <button class="btn sm" id="loteEmpresaBtn" style="display:none">Definir empresa em lote</button>
+        <button class="btn sm" id="tabelaPdfBtn">&#8681; Exportar PDF</button>
         <button class="btn primary sm" id="novoBtn" style="display:none">+ Novo substabelecido</button>
       </div>
       <div class="tablescroll">
@@ -533,11 +539,12 @@
           <input id="f_cnpj_subs" type="text" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00">
           <div class="hint" id="cnpjSubHint"></div>
         </div>
+        <div class="field"><label>Banco <span class="req">*</span></label><select id="f_banco"><option value="">Selecione…</option></select></div>
         <div class="field"><label>Empresa (razão) <span class="req">*</span></label>
           <select id="f_razao"><option value="">Selecione…</option></select>
+          <div class="hint" id="razaoHint"></div>
         </div>
-        <div class="field"><label>CNPJ (grupo)</label><input id="f_cnpj" type="text" readonly placeholder="preenchido pela razão"></div>
-        <div class="field"><label>Banco <span class="req">*</span></label><select id="f_banco"><option value="">Selecione…</option></select></div>
+        <div class="field"><label>CNPJ (grupo)</label><input id="f_cnpj" type="text" readonly placeholder="preenchido pela empresa"></div>
         <div class="field"><label>Tipo de cadastro <span class="req">*</span></label>
           <select id="f_tipo">
             <option value="">Selecione…</option>
@@ -566,7 +573,7 @@
 </div>
 
 <div class="overlay" id="bancoOverlay">
-  <div class="modal">
+  <div class="modal banco-modal">
     <div class="modal-head"><h2 id="bancoTitle">Novo banco</h2><button class="x" data-close>&times;</button></div>
     <div class="modal-body">
       <div class="form-grid">
@@ -584,12 +591,24 @@
           <input id="b_suporte" type="email" placeholder="outra.pessoa@banco.com">
           <div class="hint" id="b_suporte_h"></div>
         </div>
-        <div class="field full sep-top"><label>Empresa credenciada (CNPJ usado neste banco)</label>
-          <select id="b_empresa"><option value="">Selecione…</option></select>
+        <div class="field full sep-top">
+          <label>Empresas credenciadas <span class="hint-inline">o sub deste banco herda a empresa; com mais de uma, ele escolhe</span></label>
+          <div id="b_vincList" class="vinc-list"></div>
         </div>
-        <div class="field"><label>CNPJ</label><input id="b_cnpj" type="text" class="mono" readonly placeholder="—"></div>
-        <div class="field"><label>Cód. corban</label><input id="b_codigo_corban" type="text" placeholder="ex.: 48830"></div>
-        <div class="field"><label>Tipo de vínculo</label><input id="b_tipo_sub" type="text" placeholder="ex.: MASTER, 100%…"></div>
+        <div class="field full vinc-add">
+          <select id="b_empresa"><option value="">SELECIONE A EMPRESA…</option></select>
+          <div class="vinc-add-row">
+            <input id="b_codigo_corban" type="text" placeholder="CÓD. CORBAN (OPCIONAL)">
+            <select id="b_tipo_sub">
+              <option value="">TIPO…</option>
+              <option>MASTER</option>
+              <option>INDICADO</option>
+              <option>SUBSTABELECIDO</option>
+              <option>SUBZERO</option>
+            </select>
+            <button type="button" class="btn sm" id="b_vincAdd">+ Adicionar</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -641,6 +660,28 @@
     <div class="modal-body" id="bancoInfoBody"></div>
     <div class="modal-foot">
       <button class="btn ghost" data-close>Fechar</button>
+      <span class="spacer"></span>
+      <button class="btn danger solid" id="bancoDelBtn" style="display:none">&#128465; Excluir banco</button>
+      <button class="btn primary" id="bancoEditBtn" style="display:none">Editar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="delBancoOverlay">
+  <div class="modal sm">
+    <div class="modal-head"><h2>Excluir banco</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="del-warn">Esta ação é <b>permanente</b>. O banco <b id="delBancoNome">—</b>, seus vínculos com empresas e os arquivos do passo a passo serão apagados. Não há como desfazer.</div>
+      <div id="delBancoBloqueio"></div>
+      <div class="field">
+        <label>Para confirmar, digite <b>confirmar exclusão</b></label>
+        <input id="delBancoInput" type="text" autocomplete="off" placeholder="confirmar exclusão">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <span class="spacer"></span>
+      <button class="btn danger solid" id="delBancoConfirm" disabled>Excluir definitivamente</button>
     </div>
   </div>
 </div>
@@ -879,6 +920,24 @@
       <button class="btn ghost" data-close>Cancelar</button>
       <span class="spacer"></span>
       <button class="btn primary" id="colabSalvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="loteOverlay">
+  <div class="modal">
+    <div class="modal-head"><h2>Definir empresa em lote</h2><button class="x" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div id="loteResumo" class="hint"></div>
+      <div class="field full sep-top"><label>Empresa a aplicar <span class="req">*</span></label>
+        <select id="loteEmpresa"><option value="">Selecione…</option></select>
+        <div class="hint" id="loteHint"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-close>Cancelar</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="loteAplicar">Aplicar</button>
     </div>
   </div>
 </div>

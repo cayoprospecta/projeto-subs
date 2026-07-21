@@ -52,6 +52,9 @@ const state = {
   session: null,
   editingId: null,
   editingBancoId: null,
+  bancoVincEdit: [],
+  bancoInfoId: null,
+  delBancoId: null,
   editingEmpresaId: null,
   editingPassoId: null,
   obsMode: null,
@@ -526,7 +529,6 @@ async function carregar() {
       state.empresas = [];
     } else if (resEmp && resEmp.ok) {
       state.empresas = await resEmp.json();
-      montarEmpresasSelect();
     } else if (resEmp) {
       console.warn("empresas_grupo:", resEmp.status, await resEmp.text());
       toast("Empresas do grupo não carregaram (RLS?).", "err");
@@ -565,28 +567,60 @@ async function carregar() {
   }
 }
 
-function montarEmpresasSelect() {
-  const sel = $("f_razao"), atual = sel.value;
-  const opts = state.empresas.filter(e => norm(e.razao_social)).map(e => {
-    const label = norm(e.fantasia) ? `${escapeHtml(e.razao_social)} — ${escapeHtml(e.fantasia)}` : escapeHtml(e.razao_social);
-    return `<option value="${escapeHtml(norm(e.razao_social))}" data-cnpj="${escapeHtml(norm(e.cnpj))}">${label}</option>`;
-  }).join("");
-  sel.innerHTML = `<option value="">Selecione…</option>` + opts;
-  if (atual) sel.value = atual;
-  montarEmpresaBancoSelect();
+// A empresa do sub deriva do banco: empresas_grupo -> banco_vinculos -> bancos.
+// Um banco pode ter varias empresas credenciadas, por isso o select do
+// formulario e' remontado a cada troca de banco.
+function chaveNome(s) {
+  return norm(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
-function montarEmpresaBancoSelect() {
-  const sel = $("b_empresa");
+function bancoPorNome(nome) {
+  const k = chaveNome(nome);
+  return k ? state.bancos.find(b => chaveNome(b.nome_banco) === k) || null : null;
+}
+
+function empresasDoBanco(bancoId) {
+  if (!bancoId) return [];
+  const ids = state.bancoVinculos.filter(v => v.banco_id === bancoId).map(v => v.empresa_grupo_id);
+  return state.empresas.filter(e => ids.includes(e.id)).sort((a, b) => norm(a.razao_social).localeCompare(norm(b.razao_social), "pt-BR"));
+}
+
+function empresaById(id) {
+  return id ? state.empresas.find(e => e.id === +id) || null : null;
+}
+
+// desejado: id da empresa que deve vir selecionada (edicao). Quando o banco tem
+// uma empresa so, ela e' escolhida sozinha — que e' o caso da maioria.
+function montarRazaoSelect(desejado) {
+  const sel = $("f_razao");
   if (!sel) return;
-  const atual = sel.value;
-  const opts = state.empresas.filter(e => norm(e.razao_social)).map(e => {
+  const banco = bancoPorNome($("f_banco").value);
+  const lista = banco ? empresasDoBanco(banco.id) : [];
+  // Sem banco escolhido, ou banco sem vinculo, cai para a lista completa: e'
+  // melhor deixar cadastrar do que travar o formulario.
+  const semVinculo = !!banco && !lista.length;
+  const fonte = lista.length ? lista : state.empresas.filter(e => norm(e.razao_social));
+  sel.innerHTML = `<option value="">Selecione…</option>` + fonte.map(e => {
     const label = norm(e.fantasia) ? `${escapeHtml(e.razao_social)} — ${escapeHtml(e.fantasia)}` : escapeHtml(e.razao_social);
     return `<option value="${e.id}" data-cnpj="${escapeHtml(norm(e.cnpj))}">${label}</option>`;
   }).join("");
-  sel.innerHTML = `<option value="">Selecione…</option>` + opts;
-  if (atual) sel.value = atual;
+  const alvo = desejado && fonte.some(e => e.id === +desejado) ? String(desejado) : lista.length === 1 ? String(lista[0].id) : "";
+  sel.value = alvo;
+  const hint = $("razaoHint");
+  if (hint) {
+    if (!banco) hint.textContent = "Escolha o banco primeiro.";
+    else if (semVinculo) hint.textContent = `${norm(banco.nome_banco)} não tem empresa vinculada — cadastre o vínculo na aba Bancos.`;
+    else if (lista.length === 1) hint.textContent = "Preenchido pelo banco.";
+    else hint.textContent = `${norm(banco.nome_banco)} opera por ${lista.length} empresas: escolha qual.`;
+  }
+  sincronizarCnpjGrupo();
 }
+
+function sincronizarCnpjGrupo() {
+  const opt = $("f_razao").selectedOptions[0];
+  $("f_cnpj").value = opt ? opt.dataset.cnpj || "" : "";
+}
+
 
 function distintos(campo) {
   return [ ...new Set(state.rows.filter(isReal).map(r => norm(r[campo])).filter(Boolean)) ].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -602,10 +636,24 @@ function montarFiltros() {
   // O filtro de banco é montado por montarFiltroBancos(), a partir do
   // resultado atual dos demais filtros — não da lista de bancos cadastrados.
   montarFiltroBancos();
+  montarFiltroEmpresas();
   fill("fTipo", distintos("tipo_cadastro"));
   // Filtros de equipe agora por id (value=id, label=nome), lidos das tabelas novas
   montarFiltrosEquipe();
   preencherBancosForm();
+}
+
+// Só empresas do grupo, com a contagem de subs de cada uma. Exclusivo do
+// gestor: no modo consulta a tabela de empresas nem é carregada.
+function montarFiltroEmpresas() {
+  const el = $("fEmpresa");
+  if (!el) return;
+  const atual = el.value;
+  const reais = state.rows.filter(isReal);
+  const conta = e => reais.filter(r => r.empresa_grupo_id ? r.empresa_grupo_id === e.id : soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === soDigitos(e.cnpj)).length;
+  const ord = state.empresas.slice().sort((a, b) => norm(a.razao_social).localeCompare(norm(b.razao_social), "pt-BR"));
+  el.innerHTML = '<option value="">Todas</option>' + ord.map(e => `<option value="${e.id}">${escapeHtml(norm(e.razao_social))} (${conta(e)})</option>`).join("");
+  el.value = atual && ord.some(e => String(e.id) === atual) ? atual : "";
 }
 
 function fillPorId(sel, lista, desejado) {
@@ -677,6 +725,13 @@ function aplicarToggleFiltros() {
 // (somando o banco) e montar a lista de bancos com o que sobra dos demais.
 function passaFiltrosExcetoBanco(r) {
   const q = lower($("fBusca").value), st = $("fStatus").value, tipo = $("fTipo").value, sup = $("fSuper").value, supv = $("fSupervisor").value, ger = $("fGerente").value;
+  const emp = $("fEmpresa") ? $("fEmpresa").value : "";
+  // Empresa pela chave; subs antigos sem chave caem no CNPJ em texto.
+  if (emp) {
+    const e = empresaById(emp);
+    const bate = r.empresa_grupo_id ? String(r.empresa_grupo_id) === emp : e && soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === soDigitos(e.cnpj);
+    if (!bate) return false;
+  }
   if (st && norm(r.status).toUpperCase() !== st) return false;
   if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
   if (sup && String(superintendenteDoSub(r)) !== sup) return false;
@@ -713,6 +768,7 @@ function aplicarFiltros() {
   state.page = 1;
   renderTabela();
   renderPendentes();
+  atualizarBotaoLote();
 }
 
 const SORT_COLS = [ "nome_subs", "banco", "tipo_cadastro" ];
@@ -1346,6 +1402,134 @@ async function exportarFichaSubPDF() {
 
 let _pdfLibs = null;
 
+// Descreve os filtros ativos, para o PDF dizer de onde veio o recorte.
+function filtrosAtivosDescricao() {
+  const p = [];
+  const emp = $("fEmpresa") && $("fEmpresa").value ? empresaById($("fEmpresa").value) : null;
+  if (emp) p.push(`Empresa: ${norm(emp.razao_social)} (${norm(emp.cnpj)})`);
+  if ($("fBanco").value) p.push(`Banco: ${$("fBanco").value}`);
+  const st = $("fStatus").value;
+  if (st) p.push(`Status: ${(STATUS_SUB[st] || {}).label || st}`);
+  if ($("fTipo").value) p.push(`Tipo: ${$("fTipo").value}`);
+  const sup = $("fSuper").value, supv = $("fSupervisor").value, ger = $("fGerente").value;
+  if (sup) p.push(`Superintendente: ${nomeSuperintendente(+sup)}`);
+  if (supv) p.push(`Supervisor: ${nomeSupervisor(+supv)}`);
+  if (ger) p.push(`Gerente: ${nomeGerente(+ger)}`);
+  if ($("fBusca").value.trim()) p.push(`Busca: "${$("fBusca").value.trim()}"`);
+  return p;
+}
+
+// Exporta a tabela como ela esta na tela: mesmo recorte, mesma ordenacao.
+async function exportarTabelaSubsPDF() {
+  const linhas = state.filtered.slice();
+  if (!linhas.length) {
+    toast("Nada para exportar com os filtros atuais.", "err");
+    return;
+  }
+  const btn = $("tabelaPdfBtn");
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Gerando…';
+  try {
+    await loadPdfLibs();
+    const { jsPDF: jsPDF } = window.jspdf;
+    // Paisagem: sao muitas colunas para caber em retrato sem apertar.
+    const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+    const W = doc.internal.pageSize.getWidth();
+    const NAVY = [ 15, 31, 56 ], BLUE = [ 26, 86, 196 ], LINE = [ 200, 212, 229 ], TXT = [ 18, 33, 53 ], MUT = [ 84, 104, 127 ], VERDE = [ 14, 138, 95 ], VERM = [ 201, 58, 63 ];
+    const agora = (new Date).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+    const filtros = filtrosAtivosDescricao();
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, W, 24, "F");
+    doc.setFillColor(...BLUE);
+    doc.rect(0, 24, W, 1.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text("Prospecta", 14, 11);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(154, 171, 201);
+    doc.text("G E S T Ã O   D E   S U B S T A B E L E C I D O S", 14, 16.5);
+    doc.setFontSize(8);
+    doc.text("Gerado em " + agora, W - 14, 11, { align: "right" });
+    doc.setTextColor(...BLUE);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("RELATÓRIO · SUBSTABELECIDOS", 14, 34);
+    doc.setTextColor(...TXT);
+    doc.setFontSize(16);
+    doc.text(`${linhas.length} substabelecido${linhas.length !== 1 ? "s" : ""}`, 14, 42);
+    let y = 47;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUT);
+    if (filtros.length) {
+      const txt = doc.splitTextToSize("Filtros aplicados — " + filtros.join(" · "), W - 28);
+      doc.text(txt, 14, y);
+      y += txt.length * 4;
+    } else {
+      doc.text("Sem filtros — todos os cadastros.", 14, y);
+      y += 4;
+    }
+    doc.setDrawColor(...LINE);
+    doc.setLineWidth(.4);
+    doc.line(14, y + 1, W - 14, y + 1);
+    const nAtivos = linhas.filter(r => norm(r.status).toUpperCase() === "ATIVO").length;
+    doc.autoTable({
+      startY: y + 6,
+      head: [ [ "Substabelecido", "CNPJ", "Empresa do grupo", "Banco", "Tipo", "Cód. sub", "Gerente", "Status" ] ],
+      body: linhas.map(r => {
+        const e = r.empresa_grupo_id ? empresaById(r.empresa_grupo_id) : null;
+        return [
+          norm(r.nome_subs) || "—",
+          norm(r.cnpj_subs) || "—",
+          e ? norm(e.razao_social) : norm(r[CONFIG.COL_EMPRESA_GRUPO]) || "—",
+          norm(r.banco) || "—",
+          norm(r.tipo_cadastro) || "—",
+          norm(r.cod_substabelecido) || "—",
+          nomeGerente(r.gerente_id) || "—",
+          (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || "—"
+        ];
+      }),
+      theme: "grid",
+      styles: { font: "helvetica", fontSize: 7.6, textColor: TXT, lineColor: LINE, lineWidth: .2, cellPadding: 2 },
+      headStyles: { fillColor: NAVY, textColor: [ 255, 255, 255 ], fontSize: 7.2, fontStyle: "bold", cellPadding: 2.4 },
+      alternateRowStyles: { fillColor: [ 249, 251, 254 ] },
+      columnStyles: { 1: { cellWidth: 32 }, 4: { cellWidth: 26 }, 5: { cellWidth: 22 }, 7: { cellWidth: 22 } },
+      margin: { left: 14, right: 14, top: 16 },
+      didParseCell: d => {
+        if (d.section === "body" && d.column.index === 7) {
+          const v = lower(d.cell.raw);
+          if (v === "ativo") d.cell.styles.textColor = VERDE;
+          else if (v === "inativo") d.cell.styles.textColor = VERM;
+        }
+      },
+      didDrawPage: () => {
+        const p = doc.internal.getNumberOfPages();
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...MUT);
+        doc.text(`Página ${p}`, W - 14, doc.internal.pageSize.getHeight() - 8, { align: "right" });
+        doc.text(`${nAtivos} ativo(s) de ${linhas.length}`, 14, doc.internal.pageSize.getHeight() - 8);
+      }
+    });
+    const empSel = $("fEmpresa") && $("fEmpresa").value ? empresaById($("fEmpresa").value) : null;
+    const sufixo = empSel ? "-" + soDigitos(empSel.cnpj) : "";
+    doc.save(`substabelecidos${sufixo}-${(new Date).toISOString().slice(0, 10)}.pdf`);
+    toast("PDF gerado com sucesso", "ok");
+  } catch (err) {
+    console.error(err);
+    toast("Erro ao gerar PDF: " + err.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
+}
+
 function loadPdfLibs() {
   if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
   if (_pdfLibs) return _pdfLibs;
@@ -1677,10 +1861,85 @@ function atualizarKPIs() {
   if (state.gestor && $("viewPainel").style.display !== "none") renderPainel();
 }
 
-function setRazaoByCnpj(cnpj) {
-  const sel = $("f_razao"), c = norm(cnpj);
-  const opt = [ ...sel.options ].find(o => norm(o.dataset.cnpj) === c && c !== "");
-  sel.value = opt ? opt.value : "";
+// ---------- Definir empresa em lote ----------
+// Serve para bancos que operam por varias empresas (o C6 BANK tem 3): a
+// migracao nao tem como adivinhar qual, entao a escolha e' feita aqui, em
+// bloco, sobre o resultado filtrado na tela.
+function subsDoLote() {
+  return state.filtered.filter(r => isReal(r) && !r.empresa_grupo_id);
+}
+
+function atualizarBotaoLote() {
+  const btn = $("loteEmpresaBtn");
+  if (!btn) return;
+  const n = state.gestor ? subsDoLote().length : 0;
+  btn.style.display = n ? "" : "none";
+  btn.textContent = `Definir empresa em lote (${n})`;
+}
+
+function abrirLoteEmpresa() {
+  const alvos = subsDoLote();
+  if (!alvos.length) return;
+  // Se o filtro atual isolou um banco so, oferece apenas as empresas dele.
+  const bancosAlvo = [ ...new Set(alvos.map(r => chaveNome(r.banco))) ];
+  const banco = bancosAlvo.length === 1 ? bancoPorNome(alvos[0].banco) : null;
+  const lista = banco ? empresasDoBanco(banco.id) : [];
+  const fonte = lista.length ? lista : state.empresas;
+  $("loteResumo").innerHTML = `Serão alterados <b>${alvos.length}</b> substabelecido${alvos.length !== 1 ? "s" : ""} sem empresa, do resultado filtrado atual.` + (bancosAlvo.length > 1 ? ` <b>Atenção:</b> o filtro inclui ${bancosAlvo.length} bancos diferentes.` : "");
+  $("loteEmpresa").innerHTML = '<option value="">Selecione…</option>' + fonte.map(e => `<option value="${e.id}">${escapeHtml(norm(e.razao_social))}</option>`).join("");
+  $("loteHint").textContent = banco && lista.length ? `Empresas credenciadas em ${norm(banco.nome_banco)}.` : "Filtre por um banco para ver só as empresas credenciadas nele.";
+  $("loteOverlay").classList.add("show");
+}
+
+async function aplicarLoteEmpresa() {
+  const emp = empresaById($("loteEmpresa").value);
+  if (!emp) {
+    toast("Escolha a empresa.", "err");
+    return;
+  }
+  const alvos = subsDoLote();
+  if (!confirm(`Definir "${norm(emp.razao_social)}" como empresa de ${alvos.length} substabelecido(s)?`)) return;
+  const btn = $("loteAplicar");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.innerHTML = '<span class="spin"></span> Aplicando';
+  try {
+    const ids = alvos.map(r => r.id);
+    const res = await fetch(`${REST()}?id=in.(${ids.join(",")})`, {
+      method: "PATCH",
+      headers: { ...H(), Prefer: "return=representation" },
+      body: JSON.stringify({
+        empresa_grupo_id: emp.id,
+        [CONFIG.COL_CNPJ_GRUPO]: norm(emp.cnpj),
+        [CONFIG.COL_EMPRESA_GRUPO]: norm(emp.razao_social)
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const salvos = await res.json();
+    salvos.forEach(s => {
+      const i = state.rows.findIndex(x => x.id === s.id);
+      if (i > -1) state.rows[i] = s;
+    });
+    $("loteOverlay").classList.remove("show");
+    aplicarFiltros();
+    atualizarKPIs();
+    logHist("empresa_lote", "substabelecidos", null, `Definiu ${norm(emp.razao_social)} em ${salvos.length} sub(s)`);
+    toast(`${salvos.length} substabelecido(s) atualizados`, "ok");
+  } catch (e) {
+    console.error(e);
+    toast("Erro ao aplicar em lote. Veja o console (F12).", "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+// Subs antigos so tem o CNPJ em texto; traduz para o id da empresa.
+function empresaIdPorCnpj(cnpj) {
+  const c = soDigitos(cnpj);
+  if (!c) return null;
+  const e = state.empresas.find(x => soDigitos(x.cnpj) === c);
+  return e ? e.id : null;
 }
 
 function setBanco(val) {
@@ -1718,9 +1977,10 @@ function abrirForm(id) {
   set("f_cnpj_subs", mascaraCNPJ(r.cnpj_subs));
   validarCnpjSubUI();
   set("f_cnpj", r[CONFIG.COL_CNPJ_GRUPO]);
-  setRazaoByCnpj(r[CONFIG.COL_CNPJ_GRUPO]);
+  // Banco antes da empresa: e' o banco que define quais empresas sao possiveis.
   preencherBancosForm();
   setBanco(r.banco);
+  montarRazaoSelect(r.empresa_grupo_id || empresaIdPorCnpj(r[CONFIG.COL_CNPJ_GRUPO]));
   setTipo(r.tipo_cadastro);
   set("f_codloja", r.cod_loja_banco);
   set("f_codsub", r.cod_substabelecido);
@@ -1775,13 +2035,17 @@ function payloadDoForm() {
     const sv2 = supervisorById(supId);
     if (sv2) superId = sv2.superintendente_id;
   }
+  // Grava a chave (empresa_grupo_id / banco_id) e, junto, o texto que as telas
+  // e relatorios ainda leem — os dois precisam sair coerentes.
+  const emp = empresaById($("f_razao").value);
+  const banco = bancoPorNome($("f_banco").value);
   return {
     nome_subs: G("f_sub"),
     cnpj_subs: g("f_cnpj_subs"),
-    [CONFIG.COL_CNPJ_GRUPO]: g("f_cnpj"),
-    // Razão social gravada junto com o CNPJ: a tela resolve a empresa pelo CNPJ,
-    // mas a coluna precisa refletir o que foi escolhido no select.
-    [CONFIG.COL_EMPRESA_GRUPO]: g("f_razao"),
+    empresa_grupo_id: emp ? emp.id : null,
+    banco_id: banco ? banco.id : null,
+    [CONFIG.COL_CNPJ_GRUPO]: emp ? norm(emp.cnpj) : null,
+    [CONFIG.COL_EMPRESA_GRUPO]: emp ? norm(emp.razao_social) : null,
     banco: G("f_banco"),
     tipo_cadastro: G("f_tipo"),
     cod_loja_banco: G("f_codloja"),
@@ -2209,6 +2473,7 @@ function entrarGestor() {
   $("sidebar").style.display = "none";
   $("filtrosTop").appendChild($("filtrosWrap"));
   $("filtrosTop").style.display = "flex";
+  $("fldEmpresa").style.display = "";
   $("fldTipo").style.display = "";
   $("fldSuper").style.display = "";
   $("fldSupervisor").style.display = "";
@@ -2240,6 +2505,8 @@ function sairGestor() {
   $("filtrosTop").appendChild($("filtrosWrap"));
   $("filtrosTop").style.display = "flex";
   $("sidebar").style.display = "none";
+  $("fldEmpresa").style.display = "none";
+  $("fEmpresa").value = "";
   $("fldTipo").style.display = "none";
   $("fldSuper").style.display = "none";
   $("fldSupervisor").style.display = "none";
@@ -2318,25 +2585,119 @@ function linkWhats(tel) {
   return `<a class="tel-whats" href="https://wa.me/${full}" target="_blank" rel="noopener" title="Conversar no WhatsApp">${escapeHtml(t)}</a>`;
 }
 
-function vinculoAtivoDoBanco(bancoId) {
-  return state.bancoVinculos.find(v => v.banco_id === bancoId) || null;
+function vinculosDoBanco(bancoId) {
+  return state.bancoVinculos.filter(v => v.banco_id === bancoId);
 }
 
 function abrirBancoInfo(id) {
   const b = state.bancos.find(x => x.id === id);
   if (!b) return;
-  const v = vinculoAtivoDoBanco(id);
-  const emp = v ? state.empresas.find(e => e.id === v.empresa_grupo_id) || null : null;
+  state.bancoInfoId = id;
+  $("bancoDelBtn").style.display = state.gestor ? "" : "none";
+  $("bancoEditBtn").style.display = state.gestor ? "" : "none";
+  const vincs = vinculosDoBanco(id);
+  const v = vincs[0] || null;
   const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
   $("bancoInfoTitle").textContent = norm(b.nome_banco) || "Banco";
   const grid = pares => `<div class="sub-grid">\n    ${pares.map(([lab, val]) => `<div class="sub-field">\n      <span class="sf-label">${escapeHtml(lab)}</span>\n      <span class="sf-val${/CNPJ|Cód\./.test(lab) ? " mono" : ""}">${escapeHtml(val || "—")}</span>\n    </div>`).join("")}\n  </div>`;
   // A empresa credenciada só é exibida ao gestor — no modo consulta a tabela
   // de empresas nem é carregada, então a seção sairia vazia e o aviso de
   // "sem vínculo" seria enganoso.
-  const secEmpresa = state.gestor ? `\n    <div class="det-sec">Empresa credenciada</div>\n    ${grid([ [ "Razão social", emp ? norm(emp.razao_social) : "" ], [ "Nome fantasia", emp ? norm(emp.fantasia) : "" ], [ "CNPJ", emp ? norm(emp.cnpj) : "" ] ])}\n` : "";
-  const avisoVinculo = state.gestor && !emp ? '<div class="dl-empty">Nenhum vínculo ativo cadastrado pra este banco em <b>banco_vinculos</b>.</div>' : "";
+  // Um banco pode operar por varias empresas do grupo: lista todas.
+  const secEmpresa = state.gestor && vincs.length ? `\n    <div class="det-sec">Empresa${vincs.length > 1 ? "s" : ""} credenciada${vincs.length > 1 ? "s" : ""}</div>\n    ` + vincs.map(x => {
+    const e = empresaById(x.empresa_grupo_id);
+    return grid([ [ "Razão social", e ? norm(e.razao_social) : "" ], [ "CNPJ", e ? norm(e.cnpj) : "" ], [ "Cód. corban", norm(x.codigo_corban) ], [ "Tipo", norm(x.tipo_sub) ] ]);
+  }).join("") : "";
+  const avisoVinculo = state.gestor && !vincs.length ? '<div class="dl-empty">Nenhuma empresa vinculada a este banco. Os subs dele ficam sem empresa — cadastre o vínculo ao editar o banco.</div>' : "";
   $("bancoInfoBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi sub-box"><b class="st-${st === "ATIVO" ? "ok" : "off"}">${st}</b><span>status</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.codigo_corban) || "—")}</b><span>cód. corban</span></div>\n      <div class="det-kpi sub-box"><b>${escapeHtml(norm(v && v.tipo_sub) || "—")}</b><span>tipo</span></div>\n    </div>\n${secEmpresa}\n    <div class="det-sec">Contato do banco</div>\n    ${grid([ [ "Gerente", norm(b.gerente_banco) ], [ "Contato", norm(b.contato_gerente) ], [ "E-mail", norm(b.email_gerente) ], [ "Suporte", norm(b.suporte_banco) ] ])}\n\n    ${avisoVinculo}\n  `;
   $("bancoInfoOverlay").classList.add("show");
+}
+
+// ---------- Exclusão de banco ----------
+// Subs apontam para bancos(id) sem ON DELETE, entao a exclusao falharia no
+// banco de dados se houvesse sub vinculado: o bloqueio abaixo explica antes.
+function subsDoBanco(id) {
+  const b = state.bancos.find(x => x.id === id);
+  return state.rows.filter(isReal).filter(r => r.banco_id === id || b && chaveNome(r.banco) === chaveNome(b.nome_banco));
+}
+
+function abrirConfirmExclusaoBanco() {
+  const id = state.bancoInfoId;
+  const b = id ? state.bancos.find(x => x.id === id) : null;
+  if (!b || !state.gestor) return;
+  state.delBancoId = id;
+  const presos = subsDoBanco(id);
+  $("delBancoNome").textContent = norm(b.nome_banco) || "sem nome";
+  const bloq = $("delBancoBloqueio");
+  bloq.innerHTML = presos.length ? `<div class="del-warn"><b>Não é possível excluir:</b> ${presos.length} substabelecido${presos.length !== 1 ? "s" : ""} ainda ${presos.length !== 1 ? "apontam" : "aponta"} para este banco. Mova-os para outro banco antes, ou apenas inative este.</div>` : "";
+  $("delBancoInput").value = "";
+  $("delBancoInput").disabled = !!presos.length;
+  $("delBancoConfirm").disabled = true;
+  $("delBancoOverlay").classList.add("show");
+  if (!presos.length) $("delBancoInput").focus();
+}
+
+function validarFraseExclusaoBanco() {
+  const ok = lower($("delBancoInput").value) === FRASE_EXCLUSAO && !subsDoBanco(state.delBancoId).length;
+  $("delBancoConfirm").disabled = !ok;
+  return ok;
+}
+
+async function excluirBancoDefinitivo() {
+  const id = state.delBancoId;
+  if (!id || !state.gestor || !validarFraseExclusaoBanco()) return;
+  const b = state.bancos.find(x => x.id === id);
+  if (!b) return;
+  const btn = $("delBancoConfirm");
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span> Excluindo…';
+  try {
+    // Anexos do passo a passo: storage antes da linha, senao o arquivo fica
+    // no bucket sem dono.
+    const resArq = await fetch(`${REST_BANCO_ARQ()}?banco_id=eq.${id}&select=id,path`, {
+      headers: H()
+    });
+    if (!resArq.ok) throw new Error(`anexos HTTP ${resArq.status} — ${await resArq.text()}`);
+    const anexos = await resArq.json();
+    if (anexos.length) {
+      const { "Content-Type": _ct, ...delHeaders } = H();
+      for (const a of anexos) {
+        const del = await fetch(`${CONFIG.SUPABASE_URL}/storage/v1/object/${BUCKET_ARQ}/${a.path}`, {
+          method: "DELETE",
+          headers: delHeaders
+        });
+        if (!del.ok && del.status !== 404) throw new Error(`Storage HTTP ${del.status} — ${await del.text()}`);
+      }
+      const delRows = await fetch(`${REST_BANCO_ARQ()}?banco_id=eq.${id}`, {
+        method: "DELETE",
+        headers: H()
+      });
+      if (!delRows.ok) throw new Error(`anexos HTTP ${delRows.status} — ${await delRows.text()}`);
+    }
+    // Os vinculos saem por ON DELETE CASCADE da FK.
+    const res = await fetch(`${REST_BANCOS()}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { ...H(), Prefer: "return=representation" }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const del = await res.json();
+    if (!Array.isArray(del) || !del.length) throw new Error("Nada foi excluído. Verifique a policy de DELETE no Supabase.");
+    state.bancos = state.bancos.filter(x => x.id !== id);
+    state.bancoVinculos = state.bancoVinculos.filter(v => v.banco_id !== id);
+    $("delBancoOverlay").classList.remove("show");
+    $("bancoInfoOverlay").classList.remove("show");
+    renderBancos();
+    preencherBancosForm();
+    logHist("excluiu_banco", "bancos", id, `Excluiu definitivamente o banco ${norm(b.nome_banco)}`);
+    toast("Banco excluído", "ok");
+  } catch (e) {
+    console.error(e);
+    toast("Erro ao excluir o banco. Veja o console (F12).", "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
 }
 
 function renderBancos() {
@@ -2347,7 +2708,7 @@ function renderBancos() {
   tb.innerHTML = list.map(b => {
     const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
     const badge = st === "ATIVO" ? `<span class="badge ativo">ATIVO</span>` : `<span class="badge inativo">INATIVO</span>`;
-    return `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
+    return `<tr class="row-click" data-bancoinfo="${b.id}" title="Ver informações do banco">\n    <td class="empresa">${escapeHtml(norm(b.nome_banco) || "—")}</td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${badge}</td>\n    <td><div class="rowact">\n      <button class="btn sm" data-editbanco="${b.id}">Editar</button>\n      <button class="btn sm" data-passo="${b.id}">Passo a passo</button>\n      ${st === "ATIVO" ? `<button class="btn sm danger" data-inativabanco="${b.id}">Inativar</button>` : `<button class="btn sm" data-ativabanco="${b.id}">Reativar</button>`}\n    </div></td>\n  </tr>`;
   }).join("");
 }
 
@@ -2356,7 +2717,7 @@ function renderBancosConsulta() {
   const list = state.bancos.filter(b => norm(b.status).toUpperCase() !== "INATIVO").filter(b => !q || lower(b.nome_banco).includes(q));
   $("bancoscCount").innerHTML = `<b>${list.length}</b> banco${list.length !== 1 ? "s" : ""}`;
   $("bancoscEmpty").style.display = list.length ? "none" : "block";
-  $("bancoscTbody").innerHTML = list.map(b => `<tr>\n    <td class="empresa"><span class="banco-nome-link" data-bancoinfo="${b.id}">${escapeHtml(norm(b.nome_banco) || "—")}</span></td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n  </tr>`).join("");
+  $("bancoscTbody").innerHTML = list.map(b => `<tr class="row-click" data-bancoinfo="${b.id}" title="Ver informações do banco">\n    <td class="empresa">${escapeHtml(norm(b.nome_banco) || "—")}</td>\n    <td>${escapeHtml(norm(b.gerente_banco) || "—")}</td>\n    <td class="mono">${linkWhats(b.contato_gerente)}</td>\n    <td>${escapeHtml(norm(b.email_gerente) || "—")}</td>\n    <td>${escapeHtml(norm(b.suporte_banco) || "—")}</td>\n  </tr>`).join("");
 }
 
 async function mudarStatusBanco(id, novo) {
@@ -2387,19 +2748,20 @@ async function mudarStatusBanco(id, novo) {
 function abrirBanco(id) {
   state.editingBancoId = id || null;
   const b = id ? state.bancos.find(x => x.id === id) : {};
-  const v = id ? vinculoAtivoDoBanco(id) : null;
   $("bancoTitle").textContent = id ? "Editar banco" : "Novo banco";
   $("b_nome").value = norm(b.nome_banco);
   $("b_gerente").value = norm(b.gerente_banco);
   $("b_contato").value = mascaraTel(b.contato_gerente);
   $("b_email").value = norm(b.email_gerente);
   $("b_suporte").value = norm(b.suporte_banco);
-  montarEmpresaBancoSelect();
-  $("b_empresa").value = v ? v.empresa_grupo_id : "";
-  const optSel = $("b_empresa").selectedOptions[0];
-  $("b_cnpj").value = optSel ? optSel.dataset.cnpj || "" : "";
-  $("b_codigo_corban").value = norm(v && v.codigo_corban);
-  $("b_tipo_sub").value = norm(v && v.tipo_sub);
+  // Vinculos editados numa lista local; so vao para o banco no salvar.
+  state.bancoVincEdit = (id ? state.bancoVinculos.filter(x => x.banco_id === id) : []).map(x => ({
+    id: x.id,
+    empresa_grupo_id: x.empresa_grupo_id,
+    codigo_corban: norm(x.codigo_corban),
+    tipo_sub: norm(x.tipo_sub)
+  }));
+  renderVinculosBanco();
   [ "b_contato_h", "b_email_h", "b_suporte_h" ].forEach(h => {
     $(h).textContent = "";
     $(h).className = "hint";
@@ -2422,47 +2784,92 @@ function validarBancoUI() {
   sup ? set("b_suporte_h", validaEmail(sup), validaEmail(sup) ? "E-mail válido" : "E-mail inválido") : clear("b_suporte_h");
 }
 
+// Tipos de vínculo aceitos — lista fechada, a mesma no formulário e na lista.
+const TIPOS_VINCULO = [ "MASTER", "INDICADO", "SUBSTABELECIDO", "SUBZERO" ];
+
+function renderVinculosBanco() {
+  const el = $("b_vincList");
+  if (!el) return;
+  const lista = state.bancoVincEdit || [];
+  el.innerHTML = lista.length ? lista.map((v, i) => {
+    const e = empresaById(v.empresa_grupo_id);
+    return `<div class="vinc-item">
+      <span class="vinc-nome" title="${escapeHtml(e ? norm(e.cnpj) : "")}">${escapeHtml(e ? norm(e.razao_social) : "empresa removida")}</span>
+      <input class="vinc-in" data-vincfield="codigo_corban" data-vinci="${i}" value="${escapeHtml(norm(v.codigo_corban))}" placeholder="CÓD. CORBAN">
+      <select class="vinc-in" data-vincfield="tipo_sub" data-vinci="${i}">
+        <option value="">TIPO…</option>
+        ${TIPOS_VINCULO.map(t => `<option${chaveNome(v.tipo_sub) === t ? " selected" : ""}>${t}</option>`).join("")}
+      </select>
+      <button type="button" class="vinc-x" data-vincdel="${i}" title="Remover vínculo">&times;</button>
+    </div>`;
+  }).join("") : '<div class="vinc-vazio">Nenhuma empresa vinculada — os subs deste banco ficam sem empresa.</div>';
+  // O select de adicionar só oferece empresas que ainda não estão na lista.
+  const usados = lista.map(v => v.empresa_grupo_id);
+  const sel = $("b_empresa");
+  const livres = state.empresas.filter(e => !usados.includes(e.id));
+  sel.innerHTML = '<option value="">Selecione a empresa…</option>' + livres.map(e => `<option value="${e.id}" data-cnpj="${escapeHtml(norm(e.cnpj))}">${escapeHtml(norm(e.razao_social))}</option>`).join("");
+  $("b_vincAdd").disabled = !livres.length;
+}
+
+function adicionarVinculoBanco() {
+  const id = $("b_empresa").value;
+  if (!id) {
+    toast("Escolha a empresa.", "err");
+    return;
+  }
+  state.bancoVincEdit = state.bancoVincEdit || [];
+  state.bancoVincEdit.push({
+    id: null,
+    empresa_grupo_id: +id,
+    codigo_corban: maiusc($("b_codigo_corban").value.trim()),
+    tipo_sub: maiusc($("b_tipo_sub").value.trim())
+  });
+  $("b_codigo_corban").value = "";
+  $("b_tipo_sub").value = "";
+  renderVinculosBanco();
+}
+
+// Sincroniza a lista editada com o banco: apaga o que saiu, insere o que
+// entrou e atualiza o que mudou.
 async function salvarVinculoBanco(bancoId) {
-  const empresaId = $("b_empresa").value;
-  const codigo = $("b_codigo_corban").value.trim();
-  const tipo = $("b_tipo_sub").value.trim();
-  if (!empresaId) return; // nada selecionado, não mexe no vínculo existente
-  const body = {
-    banco_id: bancoId,
-    empresa_grupo_id: +empresaId,
-    codigo_corban: maiusc(codigo) || null,
-    tipo_sub: maiusc(tipo) || null,
-    status: "ATIVO"
-  };
-  const existente = vinculoAtivoDoBanco(bancoId);
+  const lista = state.bancoVincEdit || [];
+  const antes = state.bancoVinculos.filter(v => v.banco_id === bancoId);
+  const mantidos = lista.filter(v => v.id).map(v => v.id);
   try {
-    let res;
-    if (existente) {
-      res = await fetch(`${REST_BANCO_VINCULOS()}?id=eq.${existente.id}`, {
-        method: "PATCH",
-        headers: {
-          ...H(),
-          Prefer: "return=representation"
-        },
-        body: JSON.stringify(body)
+    for (const v of antes.filter(a => !mantidos.includes(a.id))) {
+      const res = await fetch(`${REST_BANCO_VINCULOS()}?id=eq.${v.id}`, {
+        method: "DELETE",
+        headers: H()
       });
-    } else {
-      res = await fetch(REST_BANCO_VINCULOS(), {
+      if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    }
+    for (const v of lista) {
+      const body = {
+        banco_id: bancoId,
+        empresa_grupo_id: v.empresa_grupo_id,
+        codigo_corban: v.codigo_corban || null,
+        tipo_sub: v.tipo_sub || null,
+        status: "ATIVO"
+      };
+      const res = v.id ? await fetch(`${REST_BANCO_VINCULOS()}?id=eq.${v.id}`, {
+        method: "PATCH",
+        headers: { ...H(), Prefer: "return=representation" },
+        body: JSON.stringify(body)
+      }) : await fetch(REST_BANCO_VINCULOS(), {
         method: "POST",
-        headers: {
-          ...H(),
-          Prefer: "return=representation"
-        },
+        headers: { ...H(), Prefer: "return=representation" },
         body: JSON.stringify([ body ])
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
-    const savedVinc = (await res.json())[0];
-    const i = state.bancoVinculos.findIndex(v => v.banco_id === bancoId);
-    if (i > -1) state.bancoVinculos[i] = savedVinc; else state.bancoVinculos.push(savedVinc);
+    // Releitura para o estado local refletir ids novos e remoções.
+    const res = await fetch(`${REST_BANCO_VINCULOS()}?select=id,banco_id,empresa_grupo_id,codigo_corban,tipo_sub,status&status=eq.ATIVO`, {
+      headers: H()
+    });
+    if (res.ok) state.bancoVinculos = await res.json();
   } catch (e) {
     console.error(e);
-    toast("Banco salvo, mas o vínculo (CNPJ/cód. corban) não foi salvo.", "err");
+    toast("Banco salvo, mas os vínculos não foram salvos por completo.", "err");
   }
 }
 
@@ -3718,7 +4125,6 @@ async function recarregarEmpresas() {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
   state.empresas = await res.json();
-  montarEmpresasSelect();
 }
 
 function renderEmpresas() {
@@ -4182,14 +4588,38 @@ function validarCnpjSubUI() {
 function bindForm() {
   $("novoBtn").onclick = () => abrirForm(null);
   $("formSave").onclick = salvarForm;
-  $("f_razao").addEventListener("change", e => {
-    const opt = e.target.selectedOptions[0];
-    $("f_cnpj").value = opt ? opt.dataset.cnpj || "" : "";
+  $("f_razao").addEventListener("change", sincronizarCnpjGrupo);
+  // Trocar o banco redefine quais empresas sao possiveis.
+  $("f_banco").addEventListener("change", () => montarRazaoSelect(null));
+  $("bancoDelBtn").onclick = abrirConfirmExclusaoBanco;
+  $("bancoEditBtn").onclick = () => {
+    $("bancoInfoOverlay").classList.remove("show");
+    abrirBanco(state.bancoInfoId);
+  };
+  $("delBancoInput").addEventListener("input", validarFraseExclusaoBanco);
+  $("delBancoInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && validarFraseExclusaoBanco()) excluirBancoDefinitivo();
   });
-  $("b_empresa").addEventListener("change", e => {
-    const opt = e.target.selectedOptions[0];
-    $("b_cnpj").value = opt ? opt.dataset.cnpj || "" : "";
+  $("delBancoConfirm").onclick = excluirBancoDefinitivo;
+  $("tabelaPdfBtn").onclick = exportarTabelaSubsPDF;
+  $("loteEmpresaBtn").onclick = abrirLoteEmpresa;
+  $("loteAplicar").onclick = aplicarLoteEmpresa;
+  $("b_vincAdd").onclick = adicionarVinculoBanco;
+  $("b_vincList").addEventListener("click", e => {
+    const del = e.target.closest("[data-vincdel]");
+    if (!del) return;
+    state.bancoVincEdit.splice(+del.dataset.vincdel, 1);
+    renderVinculosBanco();
   });
+  // Edicao do cod. corban e do tipo direto na linha. Sem redesenhar a lista,
+  // senao o campo perderia o foco a cada tecla.
+  // "input" cobre o texto e "change" o select, sem redesenhar a lista.
+  [ "input", "change" ].forEach(ev => $("b_vincList").addEventListener(ev, e => {
+    const el = e.target.closest("[data-vincfield]");
+    if (!el) return;
+    const v = state.bancoVincEdit[+el.dataset.vinci];
+    if (v) v[el.dataset.vincfield] = maiusc(el.value.trim());
+  }));
   $("f_cnpj_subs").addEventListener("input", e => {
     e.target.value = mascaraCNPJ(e.target.value);
     validarCnpjSubUI();
@@ -4215,6 +4645,7 @@ function bindForm() {
   $("b_email").addEventListener("input", validarBancoUI);
   $("b_suporte").addEventListener("input", validarBancoUI);
   $("bancosTbody").addEventListener("click", e => {
+    if (e.target.closest("a")) return; // link do WhatsApp segue seu caminho
     const ed = e.target.closest("[data-editbanco]");
     const ps = e.target.closest("[data-passo]");
     const ina = e.target.closest("[data-inativabanco]");
@@ -4225,6 +4656,7 @@ function bindForm() {
     } else if (at) mudarStatusBanco(+at.dataset.ativabanco, "ATIVO"); else if (bi) abrirBancoInfo(+bi.dataset.bancoinfo);
   });
   $("bancoscTbody").addEventListener("click", e => {
+    if (e.target.closest("a")) return;
     const bi = e.target.closest("[data-bancoinfo]");
     if (bi) abrirBancoInfo(+bi.dataset.bancoinfo);
   });
@@ -4284,7 +4716,7 @@ function bind() {
     state.filtrosVisiveis = !state.filtrosVisiveis;
     aplicarToggleFiltros();
   };
-  [ "fBusca", "fBanco", "fStatus", "fTipo" ].forEach(id => {
+  [ "fBusca", "fBanco", "fStatus", "fTipo", "fEmpresa" ].forEach(id => {
     const ev = id === "fBusca" ? "input" : "change";
     $(id).addEventListener(ev, aplicarFiltros);
   });

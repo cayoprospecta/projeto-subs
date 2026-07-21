@@ -328,8 +328,9 @@ tbody tr{transition:.12s}
 tbody tr:nth-child(even){background:#f9fbfe}
 tbody tr:hover{background:#eef4fc}
 td.empresa{white-space:normal;min-width:260px;max-width:380px;font-weight:600}
-.banco-nome-link{cursor:pointer;color:var(--cyan);text-decoration:none}
-.banco-nome-link:hover{color:var(--cyan-dim);text-decoration:underline}
+/* Linha inteira clicavel (bancos), como na tabela de subs */
+tr.row-click{cursor:pointer}
+tr.row-click:hover td.empresa{color:var(--cyan)}
 td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
 
 .badge{display:inline-block;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:.08em;border:1px solid}
@@ -468,6 +469,23 @@ td.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums
 .det-toggle-btn.active{background:var(--cyan);color:#fff}
 /* Filtro de status dentro do modal de detalhe: quebra em varias linhas em
    telas estreitas, por isso cada botao tem borda propria. */
+/* Lista de empresas credenciadas no modal de banco. Compacta: uma linha por
+   vinculo, com rolagem a partir de ~4 itens para o modal nao crescer. */
+.hint-inline{font-weight:400;font-size:11.5px;color:var(--dim);text-transform:none;letter-spacing:0;margin-left:6px}
+.vinc-list{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:132px;overflow-y:auto}
+.vinc-item{display:flex;align-items:center;gap:10px;padding:5px 8px;background:var(--panel2);border:1px solid var(--line);font-size:12.5px}
+.vinc-nome{font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.vinc-meta{color:var(--dim);font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto}
+.vinc-in{flex:0 1 108px;min-width:0;padding:3px 6px;font-size:11.5px;border:1px solid var(--line2);background:#fff}
+.vinc-x{background:none;border:none;color:var(--muted);font-size:17px;line-height:1;padding:0 2px;flex:0 0 auto}
+.vinc-x:hover{color:var(--inativo)}
+.vinc-vazio{font-size:12.5px;color:var(--muted);padding:5px 2px}
+.vinc-add{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.vinc-add-row{display:flex;gap:6px;align-items:center}
+.vinc-add-row input{flex:1 1 0;min-width:0}
+.vinc-add-row select{flex:1 1 0;min-width:0}
+.vinc-add-row .btn{flex:0 0 auto;white-space:nowrap}
+
 .det-status{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 2px}
 .det-status .det-toggle-btn{border:1px solid var(--line2);padding:7px 12px;font-size:11.5px;cursor:pointer}
 
@@ -657,6 +675,11 @@ tr[data-rowid]{cursor:pointer}
 .overlay.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line2);border-top:3px solid var(--cyan);box-shadow:var(--shadow);width:100%;max-width:880px;max-height:90vh;overflow-y:auto;overflow-x:hidden}
 .modal.sm{max-width:420px}
+/* Cadastro de banco: coluna unica, mais alto que largo. Sao poucos campos e
+   ficavam esparramados na grade de duas colunas. */
+.banco-modal{max-width:520px}
+.banco-modal .form-grid{grid-template-columns:1fr;gap:13px}
+.banco-modal .form-grid .field{grid-column:1/-1}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--line)}
 .modal-head h2{font-family:var(--disp);font-weight:700;font-size:21px;margin:0;color:var(--txt)}
 .modal-head .x{background:none;border:none;color:var(--muted);font-size:24px;line-height:1;padding:2px 6px}
