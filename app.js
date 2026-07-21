@@ -658,7 +658,10 @@ function montarFiltroEmpresas() {
   if (!el) return;
   const atual = el.value;
   const reais = state.rows.filter(isReal);
-  const conta = e => reais.filter(r => r.empresa_grupo_id ? r.empresa_grupo_id === e.id : soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === soDigitos(e.cnpj)).length;
+  const conta = e => reais.filter(r => {
+    const emp = empresaGrupoDe(r);
+    return emp && emp.id === e.id;
+  }).length;
   const ord = state.empresas.slice().sort((a, b) => norm(a.razao_social).localeCompare(norm(b.razao_social), "pt-BR"));
   el.innerHTML = '<option value="">Todas</option>' + ord.map(e => `<option value="${e.id}">${escapeHtml(norm(e.razao_social))} (${conta(e)})</option>`).join("");
   el.value = atual && ord.some(e => String(e.id) === atual) ? atual : "";
@@ -736,9 +739,8 @@ function passaFiltrosExcetoBanco(r) {
   const emp = $("fEmpresa") ? $("fEmpresa").value : "";
   // Empresa pela chave; subs antigos sem chave caem no CNPJ em texto.
   if (emp) {
-    const e = empresaById(emp);
-    const bate = r.empresa_grupo_id ? String(r.empresa_grupo_id) === emp : e && soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === soDigitos(e.cnpj);
-    if (!bate) return false;
+    const e = empresaGrupoDe(r);
+    if (!e || String(e.id) !== emp) return false;
   }
   if (st && norm(r.status).toUpperCase() !== st) return false;
   if (tipo && norm(r.tipo_cadastro) !== tipo) return false;
@@ -1103,17 +1105,30 @@ function abrirDetalhePainel(tipo, valor) {
   $("detalheOverlay").classList.add("show");
 }
 
+// Empresa do sub pela chave, como em nomeBanco(): renomear a empresa reflete
+// na hora. O CNPJ em texto so' resolve os subs anteriores a' migracao.
 function empresaGrupoDe(r) {
-  const c = norm(r[CONFIG.COL_CNPJ_GRUPO]).replace(/\D/g, "");
-  if (!c) return null;
-  return state.empresas.find(e => norm(e.cnpj).replace(/\D/g, "") === c) || null;
+  if (r.empresa_grupo_id) return empresaById(r.empresa_grupo_id);
+  const c = soDigitos(r[CONFIG.COL_CNPJ_GRUPO]);
+  return c ? state.empresas.find(e => soDigitos(e.cnpj) === c) || null : null;
+}
+
+// Razao social e CNPJ ja resolvidos, para uso direto nas telas.
+function razaoEmpresaDoSub(r) {
+  const e = empresaGrupoDe(r);
+  return e ? norm(e.razao_social) : norm(r[CONFIG.COL_EMPRESA_GRUPO]);
+}
+
+function cnpjEmpresaDoSub(r) {
+  const e = empresaGrupoDe(r);
+  return e ? norm(e.cnpj) : norm(r[CONFIG.COL_CNPJ_GRUPO]);
 }
 
 function camposFichaSub(r) {
   const emp = empresaGrupoDe(r);
   const uf = ufDoSub(r);
   return {
-    identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", emp ? norm(emp.razao_social) : "" ], [ "CNPJ do grupo", norm(r[CONFIG.COL_CNPJ_GRUPO]) ] ],
+    identificacao: [ [ "Nome do sub", norm(r.nome_subs) ], [ "CNPJ do sub", norm(r.cnpj_subs) ], [ "Empresa do grupo (razão)", razaoEmpresaDoSub(r) ], [ "CNPJ do grupo", cnpjEmpresaDoSub(r) ] ],
     vinculo: [ [ "Banco", nomeBanco(r) ], [ "Tipo de cadastro", norm(r.tipo_cadastro) ], [ "Cód. loja banco", norm(r.cod_loja_banco) ], [ "Cód. substabelecido", norm(r.cod_substabelecido) ], [ "Cód. parceiro", norm(r.cod_parceiro) ], [ "UF / Região", uf ? `${uf} · ${UF_REGIAO[uf]}` : "" ] ],
     gestao: [ [ "Responsável (empresa)", norm(r.responsavel_empresa) ], [ "Superintendente", nomeSuperintendente(superintendenteDoSub(r)) ], [ "Supervisor", nomeSupervisor(supervisorDoSub(r)) ], [ "Gerente", nomeGerente(r.gerente_id) ], [ "Comissão", norm(r.comissao) ], [ "Status", (STATUS_SUB[norm(r.status).toUpperCase()] || {}).label || norm(r.status) ] ]
   };
@@ -1493,11 +1508,10 @@ async function exportarTabelaSubsPDF() {
       startY: y + 6,
       head: [ [ "Substabelecido", "CNPJ", "Empresa do grupo", "Banco", "Tipo", "Cód. sub", "Gerente", "Status" ] ],
       body: linhas.map(r => {
-        const e = r.empresa_grupo_id ? empresaById(r.empresa_grupo_id) : null;
         return [
           norm(r.nome_subs) || "—",
           norm(r.cnpj_subs) || "—",
-          e ? norm(e.razao_social) : norm(r[CONFIG.COL_EMPRESA_GRUPO]) || "—",
+          razaoEmpresaDoSub(r) || "—",
           nomeBanco(r) || "—",
           norm(r.tipo_cadastro) || "—",
           norm(r.cod_substabelecido) || "—",
@@ -4124,9 +4138,11 @@ function renderColaboradores() {
 // (cnpj_empresa), não por FK. Por isso mudar o CNPJ aqui precisa propagar
 // para os subs, senão o vínculo se perde silenciosamente.
 function empresaSubsCount(e) {
-  const c = soDigitos(e && e.cnpj);
-  if (!c) return 0;
-  return state.rows.filter(isReal).filter(r => soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === c).length;
+  if (!e || !e.id) return 0;
+  return state.rows.filter(isReal).filter(r => {
+    const emp = empresaGrupoDe(r);
+    return emp && emp.id === e.id;
+  }).length;
 }
 
 async function recarregarEmpresas() {
@@ -4211,30 +4227,34 @@ async function salvarEmpresa() {
     if (!saved) throw new Error("Nada foi salvo. Verifique a policy de INSERT/UPDATE no Supabase.");
     let atualizados = 0;
     if ((cnpjMudou || razaoMudou) && nVinc) {
-      // Propaga CNPJ e razão social novos para os subs. Agrupa pelos valores
-      // brutos gravados (o formato pode variar), assim resolve em uma ou duas
-      // chamadas.
-      const antigo = soDigitos(anterior.cnpj);
-      const alvo = state.rows.filter(isReal).filter(r => soDigitos(r[CONFIG.COL_CNPJ_GRUPO]) === antigo);
-      for (const valor of [ ...new Set(alvo.map(r => r[CONFIG.COL_CNPJ_GRUPO])) ]) {
-        const up = await fetch(`${REST()}?${CONFIG.COL_CNPJ_GRUPO}=eq.${encodeURIComponent(valor)}`, {
+      // As telas ja leem pela chave (empresaGrupoDe), entao isto nao e' mais o
+      // que faz o rename aparecer — serve para manter as colunas de texto
+      // coerentes para quem consulta o banco por fora.
+      const alvo = state.rows.filter(isReal).filter(r => {
+        const e = empresaGrupoDe(r);
+        return e && e.id === saved.id;
+      });
+      if (alvo.length) {
+        const up = await fetch(`${REST()}?id=in.(${alvo.map(r => r.id).join(",")})`, {
           method: "PATCH",
           headers: {
             ...H(),
             Prefer: "return=minimal"
           },
           body: JSON.stringify({
-            [CONFIG.COL_CNPJ_GRUPO]: cnpj,
-            [CONFIG.COL_EMPRESA_GRUPO]: saved.razao_social
+            empresa_grupo_id: saved.id,
+            [CONFIG.COL_CNPJ_GRUPO]: norm(saved.cnpj),
+            [CONFIG.COL_EMPRESA_GRUPO]: norm(saved.razao_social)
           })
         });
         if (!up.ok) throw new Error(`Empresa salva, mas falhou ao atualizar os subs: HTTP ${up.status} — ${await up.text()}`);
+        alvo.forEach(r => {
+          r.empresa_grupo_id = saved.id;
+          r[CONFIG.COL_CNPJ_GRUPO] = norm(saved.cnpj);
+          r[CONFIG.COL_EMPRESA_GRUPO] = norm(saved.razao_social);
+          atualizados++;
+        });
       }
-      alvo.forEach(r => {
-        r[CONFIG.COL_CNPJ_GRUPO] = cnpj;
-        r[CONFIG.COL_EMPRESA_GRUPO] = saved.razao_social;
-        atualizados++;
-      });
     }
     await recarregarEmpresas();
     renderEmpresas();
