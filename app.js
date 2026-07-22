@@ -2000,14 +2000,6 @@ function abrirForm(id) {
   montarFormSuperSel(superId || null);
   montarFormSupervSel(superId, supervisorDoSub(r) || null);
   montarFormGerenteSel(superId, r.gerente_id || null);
-  const ref = $("gerenteRefHint");
-  if (ref) {
-    const gc = norm(r.gerente_comercial);
-    if (!r.gerente_id && gc) {
-      ref.textContent = `Referência (dado antigo): ${gc}`;
-      ref.style.display = "";
-    } else ref.style.display = "none";
-  }
   set("f_comissao", r.comissao);
   atualizarObrigatoriedadeComissao();
   $("formSave").textContent = id ? "Salvar" : "Avançar";
