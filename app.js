@@ -1,8 +1,6 @@
 const CONFIG = {
   SUPABASE_URL: "https://prospecta-proxy.cayonauta.workers.dev",
   TABLE: "substabelecidos",
-  COL_CNPJ_GRUPO: "cnpj_empresa",
-  COL_EMPRESA_GRUPO: "empresa",
   TABLE_EMPRESAS: "empresas_grupo",
   TABLE_BANCOS: "bancos",
   TABLE_BANCO_VINCULOS: "banco_vinculos",
@@ -579,12 +577,12 @@ function bancoPorNome(nome) {
   return k ? state.bancos.find(b => chaveNome(b.nome_banco) === k) || null : null;
 }
 
-// Nome do banco do sub resolvido pela chave, nunca pelo texto gravado: assim
-// renomear o banco reflete na hora em toda a tela. O texto so' e' usado como
-// reserva para o sub sem banco_id (CEF INCONTA e KOVR).
+// Nome do banco do sub resolvido pela chave. Nao ha mais copia em texto: a
+// coluna banco foi aposentada em 22/07/2026, depois que todo sub passou a ter
+// banco_id.
 function nomeBanco(r) {
   const b = r.banco_id ? state.bancos.find(x => x.id === r.banco_id) : null;
-  return b ? norm(b.nome_banco) : norm(r.banco);
+  return b ? norm(b.nome_banco) : "";
 }
 
 function empresasDoBanco(bancoId) {
@@ -1106,22 +1104,20 @@ function abrirDetalhePainel(tipo, valor) {
 }
 
 // Empresa do sub pela chave, como em nomeBanco(): renomear a empresa reflete
-// na hora. O CNPJ em texto so' resolve os subs anteriores a' migracao.
+// na hora, sem copia em texto para sair de sincronia.
 function empresaGrupoDe(r) {
-  if (r.empresa_grupo_id) return empresaById(r.empresa_grupo_id);
-  const c = soDigitos(r[CONFIG.COL_CNPJ_GRUPO]);
-  return c ? state.empresas.find(e => soDigitos(e.cnpj) === c) || null : null;
+  return r.empresa_grupo_id ? empresaById(r.empresa_grupo_id) : null;
 }
 
 // Razao social e CNPJ ja resolvidos, para uso direto nas telas.
 function razaoEmpresaDoSub(r) {
   const e = empresaGrupoDe(r);
-  return e ? norm(e.razao_social) : norm(r[CONFIG.COL_EMPRESA_GRUPO]);
+  return e ? norm(e.razao_social) : "";
 }
 
 function cnpjEmpresaDoSub(r) {
   const e = empresaGrupoDe(r);
-  return e ? norm(e.cnpj) : norm(r[CONFIG.COL_CNPJ_GRUPO]);
+  return e ? norm(e.cnpj) : "";
 }
 
 function camposFichaSub(r) {
@@ -1932,11 +1928,7 @@ async function aplicarLoteEmpresa() {
     const res = await fetch(`${REST()}?id=in.(${ids.join(",")})`, {
       method: "PATCH",
       headers: { ...H(), Prefer: "return=representation" },
-      body: JSON.stringify({
-        empresa_grupo_id: emp.id,
-        [CONFIG.COL_CNPJ_GRUPO]: norm(emp.cnpj),
-        [CONFIG.COL_EMPRESA_GRUPO]: norm(emp.razao_social)
-      })
+      body: JSON.stringify({ empresa_grupo_id: emp.id })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
     const salvos = await res.json();
@@ -1956,14 +1948,6 @@ async function aplicarLoteEmpresa() {
     btn.disabled = false;
     btn.textContent = orig;
   }
-}
-
-// Subs antigos so tem o CNPJ em texto; traduz para o id da empresa.
-function empresaIdPorCnpj(cnpj) {
-  const c = soDigitos(cnpj);
-  if (!c) return null;
-  const e = state.empresas.find(x => soDigitos(x.cnpj) === c);
-  return e ? e.id : null;
 }
 
 function setBanco(val) {
@@ -2000,11 +1984,11 @@ function abrirForm(id) {
   set("f_sub", r.nome_subs);
   set("f_cnpj_subs", mascaraCNPJ(r.cnpj_subs));
   validarCnpjSubUI();
-  set("f_cnpj", r[CONFIG.COL_CNPJ_GRUPO]);
+  set("f_cnpj", cnpjEmpresaDoSub(r));
   // Banco antes da empresa: e' o banco que define quais empresas sao possiveis.
   preencherBancosForm();
   setBanco(nomeBanco(r));
-  montarRazaoSelect(r.empresa_grupo_id || empresaIdPorCnpj(r[CONFIG.COL_CNPJ_GRUPO]));
+  montarRazaoSelect(r.empresa_grupo_id);
   setTipo(r.tipo_cadastro);
   set("f_codloja", r.cod_loja_banco);
   set("f_codsub", r.cod_substabelecido);
@@ -2068,9 +2052,6 @@ function payloadDoForm() {
     cnpj_subs: g("f_cnpj_subs"),
     empresa_grupo_id: emp ? emp.id : null,
     banco_id: banco ? banco.id : null,
-    [CONFIG.COL_CNPJ_GRUPO]: emp ? norm(emp.cnpj) : null,
-    [CONFIG.COL_EMPRESA_GRUPO]: emp ? norm(emp.razao_social) : null,
-    banco: G("f_banco"),
     tipo_cadastro: G("f_tipo"),
     cod_loja_banco: G("f_codloja"),
     cod_substabelecido: G("f_codsub"),
@@ -2642,7 +2623,7 @@ function abrirBancoInfo(id) {
 // banco de dados se houvesse sub vinculado: o bloqueio abaixo explica antes.
 function subsDoBanco(id) {
   const b = state.bancos.find(x => x.id === id);
-  return state.rows.filter(isReal).filter(r => r.banco_id === id || b && chaveNome(r.banco) === chaveNome(b.nome_banco));
+  return state.rows.filter(isReal).filter(r => r.banco_id === id);
 }
 
 function abrirConfirmExclusaoBanco() {
@@ -4179,7 +4160,7 @@ function abrirEmpresa(id) {
   const n = id ? empresaSubsCount(e) : 0;
   const av = $("empresaVinculo");
   if (n) {
-    av.innerHTML = `Esta empresa está vinculada a <b>${n}</b> substabelecido${n !== 1 ? "s" : ""} pelo CNPJ. Se você alterar o CNPJ, eles serão atualizados junto para não perder o vínculo.`;
+    av.innerHTML = `Esta empresa está vinculada a <b>${n}</b> substabelecido${n !== 1 ? "s" : ""}. O vínculo é por referência, então alterar a razão social ou o CNPJ aqui passa a valer para ${n !== 1 ? "todos eles" : "ele"} automaticamente.`;
     av.style.display = "";
   } else av.style.display = "none";
   $("empresaOverlay").classList.add("show");
@@ -4197,10 +4178,11 @@ async function salvarEmpresa() {
   if (!validaCNPJ(cnpj)) return erro("CNPJ inválido.");
   const id = state.editingEmpresaId;
   const anterior = id ? state.empresas.find(x => x.id === id) : null;
+  // Trocar o CNPJ nao exige mais tocar nos subs (eles apontam por id), mas o
+  // aviso continua: e' uma mudanca que muda o que aparece na ficha de todos.
   const cnpjMudou = !!anterior && soDigitos(anterior.cnpj) !== soDigitos(cnpj);
-  const razaoMudou = !!anterior && norm(anterior.razao_social) !== maiusc(razao);
   const nVinc = anterior ? empresaSubsCount(anterior) : 0;
-  if (cnpjMudou && nVinc && !confirm(`O CNPJ mudou e ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} usa${nVinc !== 1 ? "m" : ""} o CNPJ antigo.\n\nAtualizar também ${nVinc !== 1 ? "esses" : "esse"} ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} para o novo CNPJ?\n\nSe cancelar, nada será salvo.`)) return;
+  if (cnpjMudou && nVinc && !confirm(`O CNPJ desta empresa vai mudar e ${nVinc} substabelecido${nVinc !== 1 ? "s" : ""} ${nVinc !== 1 ? "estão" : "está"} vinculado${nVinc !== 1 ? "s" : ""} a ela.\n\n${nVinc !== 1 ? "Todos passarão" : "Ele passará"} a exibir o CNPJ novo. Continuar?`)) return;
   const btn = $("empresaSalvar");
   btn.disabled = true;
   const orig = btn.textContent;
@@ -4225,43 +4207,14 @@ async function salvarEmpresa() {
     }
     const saved = (await res.json())[0];
     if (!saved) throw new Error("Nada foi salvo. Verifique a policy de INSERT/UPDATE no Supabase.");
-    let atualizados = 0;
-    if ((cnpjMudou || razaoMudou) && nVinc) {
-      // As telas ja leem pela chave (empresaGrupoDe), entao isto nao e' mais o
-      // que faz o rename aparecer — serve para manter as colunas de texto
-      // coerentes para quem consulta o banco por fora.
-      const alvo = state.rows.filter(isReal).filter(r => {
-        const e = empresaGrupoDe(r);
-        return e && e.id === saved.id;
-      });
-      if (alvo.length) {
-        const up = await fetch(`${REST()}?id=in.(${alvo.map(r => r.id).join(",")})`, {
-          method: "PATCH",
-          headers: {
-            ...H(),
-            Prefer: "return=minimal"
-          },
-          body: JSON.stringify({
-            empresa_grupo_id: saved.id,
-            [CONFIG.COL_CNPJ_GRUPO]: norm(saved.cnpj),
-            [CONFIG.COL_EMPRESA_GRUPO]: norm(saved.razao_social)
-          })
-        });
-        if (!up.ok) throw new Error(`Empresa salva, mas falhou ao atualizar os subs: HTTP ${up.status} — ${await up.text()}`);
-        alvo.forEach(r => {
-          r.empresa_grupo_id = saved.id;
-          r[CONFIG.COL_CNPJ_GRUPO] = norm(saved.cnpj);
-          r[CONFIG.COL_EMPRESA_GRUPO] = norm(saved.razao_social);
-          atualizados++;
-        });
-      }
-    }
+    // Nao ha mais o que propagar: os subs apontam para a empresa por
+    // empresa_grupo_id, entao renomear ou trocar o CNPJ aparece sozinho.
     await recarregarEmpresas();
     renderEmpresas();
     aplicarFiltros();
     $("empresaOverlay").classList.remove("show");
-    logHist(id ? "editou_empresa" : "criou_empresa", CONFIG.TABLE_EMPRESAS, saved.id, `${id ? "Editou" : "Criou"} empresa ${norm(saved.razao_social)}${atualizados ? ` (CNPJ propagado para ${atualizados} sub(s))` : ""}`);
-    toast(atualizados ? `Empresa salva — ${atualizados} sub(s) atualizados` : id ? "Empresa atualizada" : "Empresa criada", "ok");
+    logHist(id ? "editou_empresa" : "criou_empresa", CONFIG.TABLE_EMPRESAS, saved.id, `${id ? "Editou" : "Criou"} empresa ${norm(saved.razao_social)}`);
+    toast(id ? "Empresa atualizada" : "Empresa criada", "ok");
   } catch (e) {
     console.error(e);
     erro(e.message);
