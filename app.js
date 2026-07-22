@@ -46,6 +46,10 @@ const state = {
   page: 1,
   filtrosVisiveis: false,
   gestor: false,
+  // Papel "diretor": visão de leitura (painel, subs, pendentes, produção).
+  // Nunca escreve — por isso fica separado de `gestor`, que continua sendo o
+  // único gate de edição em toda a tela. Ver eh_diretor() no Supabase.
+  diretor: false,
   gestorNome: null,
   session: null,
   editingId: null,
@@ -343,6 +347,19 @@ function limparSessao(slot) {
   if (state._refreshTimers[slot]) clearTimeout(state._refreshTimers[slot]);
 }
 
+// O papel vem do app_metadata, gravado no servidor — o usuário não edita.
+// A tela só reflete o que a RLS já impõe; esconder aba não é a proteção.
+//
+// Menor privilégio: só role = 'gestor' abre a tela de gestor. Qualquer outro
+// valor — inclusive papel ausente, como acontece em usuário recém-criado pela
+// UI do Supabase — cai na visão de leitura da diretoria. Errar para o lado
+// restritivo mostra pouco demais; errar para o outro dá escrita a quem não
+// deveria ter.
+function papelDoUsuario(user) {
+  const r = user && user.app_metadata && user.app_metadata.role;
+  return r === "gestor" ? "gestor" : "diretor";
+}
+
 async function authLogin(slot, login, senha, persistente) {
   state._persist[slot] = !!persistente;
   try {
@@ -365,7 +382,8 @@ async function authLogin(slot, login, senha, persistente) {
     });
     const nome = data.user && data.user.user_metadata && data.user.user_metadata.nome || data.user && data.user.email && data.user.email.split("@")[0] || "Gestor(a)";
     return {
-      nome: nome
+      nome: nome,
+      papel: papelDoUsuario(data.user)
     };
   } catch (e) {
     console.error("authLogin:", e);
@@ -420,7 +438,7 @@ function agendarRefreshSessao(slot) {
 const INATIVIDADE_MS = 20 * 60 * 1e3;
 
 function sessaoGestorTemporaria() {
-  return state.gestor && !state._persist.gestor;
+  return (state.gestor || state.diretor) && !state._persist.gestor;
 }
 
 function registrarAtividade() {
@@ -487,7 +505,8 @@ async function restaurarSessao(slot) {
     if (!res.ok) throw new Error("sessão inválida");
     const user = await res.json();
     return {
-      nome: user.user_metadata && user.user_metadata.nome || (user.email || "").split("@")[0] || "Gestor(a)"
+      nome: user.user_metadata && user.user_metadata.nome || (user.email || "").split("@")[0] || "Gestor(a)",
+      papel: papelDoUsuario(user)
     };
   } catch (e) {
     limparSessao(slot);
@@ -1878,7 +1897,7 @@ async function exportarDetalhePDF() {
 // Os KPIs vivem no Painel Sintético. Depois de mexer nos dados basta redesenhar
 // o painel quando ele estiver à vista — em outra aba, o switchTab já o refaz.
 function atualizarKPIs() {
-  if (state.gestor && $("viewPainel").style.display !== "none") renderPainel();
+  if ((state.gestor || state.diretor) && $("viewPainel").style.display !== "none") renderPainel();
 }
 
 // ---------- Definir empresa em lote ----------
@@ -2400,7 +2419,7 @@ async function abrirMinhas() {
 }
 
 async function verificarRespostas() {
-  if (state.gestor) return;
+  if (state.gestor || state.diretor) return;
   const pend = getPendentes();
   if (!pend.length) return;
   if (!state.sessions.consultor) return;
@@ -2486,9 +2505,46 @@ function entrarGestor() {
   toast(`Bem-vindo(a), ${escapeHtml(state.gestorNome || "")}`, "ok");
 }
 
+// Diretoria: leitura de Painel, Substabelecidos, Pendentes/Andamento e
+// Produção. Sem Colaboradores, Bancos, Empresas, Agenda, Histórico e Dúvidas —
+// e sem criar/editar nada. A RLS já barra tudo isso; aqui é só a navegação.
+function entrarDiretor() {
+  state.diretor = true;
+  carregar();
+  $("modePill").innerHTML = `Diretoria <b>${escapeHtml(state.gestorNome || "")}</b>`;
+  $("gestorBtn").style.display = "none";
+  $("sairBtn").style.display = "";
+  $("novoBtn").style.display = "none";
+  $("thAcoes").style.display = "none";
+  $("tabs").style.display = "none";
+  $("tabsCons").style.display = "none";
+  $("tabsDir").style.display = "flex";
+  $("notifWrap").style.display = "none";
+  $("sidebar").style.display = "none";
+  $("filtrosTop").appendChild($("filtrosWrap"));
+  $("filtrosTop").style.display = "flex";
+  // Empresas do grupo é gestor-only na RLS, então o select ficaria vazio.
+  $("fldEmpresa").style.display = "none";
+  $("fEmpresa").value = "";
+  $("fldTipo").style.display = "";
+  $("fldSuper").style.display = "";
+  $("fldSupervisor").style.display = "";
+  $("fldGerente").style.display = "";
+  aplicarToggleFiltros();
+  switchTab("painel");
+  aplicarFiltros();
+  toast(`Bem-vindo(a), ${escapeHtml(state.gestorNome || "")}`, "ok");
+}
+
+function entrarPorPapel(papel) {
+  if (papel === "diretor") entrarDiretor(); else entrarGestor();
+}
+
 function sairGestor() {
   authLogout("gestor");
   state.gestor = false;
+  state.diretor = false;
+  $("tabsDir").style.display = "none";
   state.gestorNome = null;
   $("modePill").innerHTML = "Modo <b>Consulta</b>";
   $("gestorBtn").style.display = "";
@@ -3958,7 +4014,7 @@ function limparProducao() {
 
 function exigirAcesso(fn) {
   return (...args) => {
-    if (state.gestor || state.acessoLiberado) {
+    if (state.gestor || state.diretor || state.acessoLiberado) {
       fn(...args);
       return;
     }
@@ -4506,6 +4562,7 @@ function switchTab(t) {
   $("viewPainel").style.display = t === "painel" ? "" : "none";
   document.querySelectorAll("#tabs .tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
   document.querySelectorAll("#tabsCons .tab").forEach(b => b.classList.toggle("active", b.dataset.consview === t));
+  document.querySelectorAll("#tabsDir .tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
   if (t === "pendentes") renderPendentes();
   if (t === "bancosc") renderBancosConsulta();
   if (t === "bancos") renderBancos();
@@ -4769,7 +4826,7 @@ function bind() {
       state.gestorNome = resultado.nome;
       registrarAtividade();
       $("loginOverlay").classList.remove("show");
-      entrarGestor();
+      entrarPorPapel(resultado.papel);
     } else $("loginHint").innerHTML = '<span class="warn">Login ou senha incorretos.</span>';
   };
   $("loginPass").addEventListener("keydown", e => {
@@ -5062,7 +5119,7 @@ async function initTicker() {
     if (resultado) {
       state.gestorNome = resultado.nome;
       registrarAtividade();
-      entrarGestor();
+      entrarPorPapel(resultado.papel);
     }
   });
   restaurarSessao("consultor").then(resultado => {

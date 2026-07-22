@@ -49,18 +49,49 @@ O arquivo tem marcas claras de ter passado por um **minificador e depois um beau
 
 ## 3. Modos de acesso
 
-São **dois modos**, com dois logins reais no Supabase (dois slots de sessão independentes, ver [app.js:245](app.js#L245)):
+São **três modos**, sobre dois slots de sessão independentes (ver [app.js:245](app.js#L245)): consulta usa o slot `consultor`; gestor e diretoria dividem o slot `gestor`, distinguidos pelo papel no token.
 
 | Modo | Como entra | O que vê |
 |---|---|---|
 | **Consulta** | Senha única na conta compartilhada `consultor@prospecta.local` ([app.js:3254](app.js#L3254)) | Navegação lateral reduzida, sem botões de criar/editar, sem KPIs de gestão. Pode enviar dúvidas. |
+| **Diretoria** | Login individual com `app_metadata.role = 'diretor'` | Somente leitura: Painel Sintético, Substabelecidos, Pendentes/Andamento e Produção. Sem Colaboradores (PII), Bancos, Empresas, Agenda, Histórico e Dúvidas. Não cria nem edita nada. |
 | **Gestor** | Login + senha individuais (`login` vira `login@prospecta.local`, ver [app.js:250](app.js#L250)) | Todas as abas, criação/edição/exclusão, painel, histórico, respostas às dúvidas. |
+
+O papel sai de `app_metadata.role` no JWT, lido por `papelDoUsuario()`. **Só `role = 'gestor'` abre a tela de gestor** — qualquer outro valor, inclusive papel ausente, cai na visão de leitura da diretoria. Isso é deliberado: usuário criado pela UI do Supabase nasce sem `app_metadata`, e errar para o lado restritivo mostra pouco demais, enquanto errar para o outro daria escrita a quem não deveria. Ainda assim, **todo usuário novo deve receber papel explícito**. A UI de Authentication → Users não edita `app_metadata`, então o papel é setado por SQL, sempre com merge (`||`) para não apagar o `{"provider":"email",...}` que já está lá e quebrar o login:
+
+```sql
+update auth.users
+   set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"diretor"}'::jsonb
+ where email = 'fulano@prospectapromotora.com.br';
+
+-- conferir que ninguém ficou sem papel:
+select email, raw_app_meta_data ->> 'role' as papel from auth.users order by email;
+```
+
+No código, `state.gestor` continua sendo o **único** gate de edição em toda a tela; `state.diretor` só libera leitura. Um papel novo que não deva escrever não precisa tocar em nenhum dos gates existentes.
 
 Login é `password grant` no GoTrue; a sessão vai para `sessionStorage` e é renovada por um timer agendado um minuto antes de expirar ([app.js:335](app.js#L335)). Fechar o navegador encerra a sessão.
 
 > **Ponto central:** `entrarGestor()` e `sairGestor()` ([app.js:1910](app.js#L1910)) apenas **mostram e escondem elementos da interface**. Não existe — nem poderia existir de forma confiável — controle de permissão no cliente. Quem impede um consultor de gravar dados é a **RLS (Row Level Security) do Supabase**, avaliando o JWT de cada requisição (as mensagens "RLS bloqueou a exclusão" em [app.js:2846](app.js#L2846) e [app.js:2971](app.js#L2971) tratam justamente esse caso).
 >
 > **Estado em 17/07/2026:** as políticas RLS foram revisadas tabela por tabela e reescritas para separar gestor de consulta de verdade. A distinção usa o papel gravado em `app_metadata` de cada usuário (`role = gestor` ou `consulta`), lido pela função `public.eh_gestor()`. Escrita (INSERT/UPDATE/DELETE) exige gestor; leitura é liberada para qualquer autenticado; `historico` é append-only. O passo a passo, os scripts e os testes estão em [docs/seguranca/](seguranca/). Antes disso, as políticas existiam mas eram permissivas (`using true`) — a separação era só visual.
+>
+> **Estado em 22/07/2026:** somou-se o papel `diretor`, com a função `public.eh_diretor()` no mesmo desenho da `eh_gestor()` (lê `app_metadata`, não é `SECURITY DEFINER`, `auth.jwt()` qualificada pelo schema). Como `eh_gestor()` exige `role = 'gestor'`, o diretor já é negado por todas as policies de escrita sem que nenhuma precise mudar. A única concessão é leitura de `producao_mensal`, via policy **aditiva** — policies permissivas são combinadas com OR, então dá para conceder sem `DROP POLICY` (que trava com o site aberto, pelo lock do polling):
+>
+> ```sql
+> create or replace function public.eh_diretor() returns boolean language sql stable as $$
+>   select coalesce((auth.jwt() -> 'app_metadata' ->> 'role') = 'diretor', false);
+> $$;
+> revoke all on function public.eh_diretor() from public;
+> grant execute on function public.eh_diretor() to authenticated;
+>
+> create policy producao_mensal_select_diretor on public.producao_mensal
+>   for select to authenticated using (public.eh_diretor());
+> ```
+>
+> O diretor **não** ganha `gerentes_comerciais` (PII — usa a view `gerentes_publicos`), `empresas_grupo`, `agenda`, `historico`, `mensagem` nem os anexos. `substabelecidos`, `bancos` e `banco_vinculos` já eram select para qualquer autenticado, então Painel, Subs e Pendentes funcionaram sem mudança.
+>
+> Os scripts `.sql` não são versionados aqui (ver `.gitignore`) — por isso o essencial está transcrito acima.
 
 ---
 
@@ -174,7 +205,7 @@ Uma revisão de segurança olhou o Supabase de verdade (não só o código do si
 ### 9.2. Outros pontos
 
 3. **O README cita `importador_producao.html`, que não existe neste repositório.** Ou a ferramenta se perdeu, ou vive em outro lugar, ou a linha ficou obsoleta. Vale resolver — hoje é a única instrução escrita sobre como a produção entra no sistema.
-4. **`producao_convenio` não existe no banco.** O `CONFIG` a referencia ([app.js:12](app.js#L12)) e a aba Produção a consulta ([app.js:3126](app.js#L3126)), mas ela não é tabela nem view no Supabase. A chamada falha silenciosamente (o `catch` guarda lista vazia). Ou a tabela precisa ser criada, ou o código é morto e deve sair.
+4. **`producao_convenio` ainda não existe no banco.** O `CONFIG` a referencia ([app.js:12](app.js#L12)) e a aba Produção a consulta ([app.js:3126](app.js#L3126)). A chamada falha silenciosamente (o `catch` guarda lista vazia) — adiado por decisão, será populado depois. Quem for escrever SQL sobre ela deve **checar a existência antes** (`to_regclass('public.producao_convenio') is not null`, dentro de um `do $$ ... $$`): ao criar o papel `diretor` em 22/07/2026, uma `create policy` direta sobre ela abortou o script inteiro, e como o SQL Editor roda em transação isso quase reverteu o que já tinha funcionado. A tabela de produção que **existe** hoje é a `producao_mensal`.
 5. **Sem testes e sem CI.** Todo push para o `main` vai direto ao ar. Não existe rede de segurança automatizada; a verificação é manual.
 6. **A UF derivada do código do sub** é um acoplamento implícito entre uma convenção de nomenclatura e um recurso visível (mapa e recortes regionais).
 
