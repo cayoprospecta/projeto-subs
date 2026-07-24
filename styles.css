@@ -92,8 +92,11 @@ a{color:var(--cyan)}
   transition:flex-basis .2s ease;
 }
 .sidebar-col.expanded{
-  flex:0 0 220px;flex-basis:220px!important;
+  flex:0 0 244px;flex-basis:244px!important;
+  padding:18px 16px;gap:22px;
+  transition:flex-basis .2s ease,padding .2s ease;
 }
+.sidebar-col.expanded .tabs{gap:8px}
 .tabs{display:flex;flex-direction:column;gap:4px;background:transparent;border:none;padding:0;box-shadow:none;margin:0}
 .tab{
   background:none;border:none;border-left:3px solid transparent;
@@ -106,7 +109,8 @@ a{color:var(--cyan)}
 .tab:hover{color:#fff;background:var(--side-bg2)}
 .tab.active{color:#fff;background:var(--side-bg2);border-left-color:var(--cyan)}
 .sidebar-col.expanded .tab{
-  justify-content:flex-start;gap:12px;padding:13px 12px;font-size:13.5px;
+  justify-content:flex-start;gap:14px;padding:14px 14px;font-size:13.5px;
+  white-space:normal;line-height:1.25;
 }
 .sidebar-col.expanded .tab-ic{width:20px;height:20px}
 .sidebar-col .tab-badge{display:none!important}

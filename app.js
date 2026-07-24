@@ -73,6 +73,8 @@ const state = {
   sortCol: null,
   sortDir: 1,
   duvidas: [],
+  acessos: [],
+  acessoPapelId: null,
   duvidasCarregadas: false,
   editingDuvidaId: null
 };
@@ -1057,9 +1059,13 @@ function detalheBase() {
   return state.rows.filter(isReal).filter(filtroPainel(state.detalheStatus || "TODOS"));
 }
 
-function barraStatusDetalhe() {
+// Com `universo` (todos os subs do recorte, sem filtro de status), some os
+// status que nao existem ali - nao adianta oferecer "Inativos" numa regiao
+// que so tem ativos.
+function barraStatusDetalhe(universo) {
   const atual = state.detalheStatus || "TODOS";
-  return `<div class="det-status">\n    ${DETALHE_STATUS.map(([ k, lab ]) => `<button class="det-toggle-btn ${atual === k ? "active" : ""}" data-det-status="${k}">${lab}</button>`).join("")}\n  </div>`;
+  const opcoes = universo ? DETALHE_STATUS.filter(([ k ]) => k === "TODOS" || k === atual || universo.some(filtroPainel(k))) : DETALHE_STATUS;
+  return `<div class="det-status">\n    ${opcoes.map(([ k, lab ]) => `<button class="det-toggle-btn ${atual === k ? "active" : ""}" data-det-status="${k}">${lab}</button>`).join("")}\n  </div>`;
 }
 
 function renderDetalheBanco(valor) {
@@ -1091,8 +1097,24 @@ function renderDetalheUf(valor) {
   $("detalheBody").innerHTML = `\n    <div class="det-resumo">\n      <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na UF</span></div>\n      <div class="det-kpi"><b>${entries.length}</b><span>banco${entries.length !== 1 ? "s" : ""}</span></div>\n    </div>\n    <div class="det-sec det-sec-toggle">\n      <span class="det-toggle" id="ufDetalheToggle">\n        <button class="det-toggle-btn ${view === "bancos" ? "active" : ""}" data-uf-view="bancos">Bancos com mais subs nesta UF</button>\n        <button class="det-toggle-btn ${view === "subs" ? "active" : ""}" data-uf-view="subs">Subs dessa UF</button>\n      </span>\n    </div>\n    ${barraStatusDetalhe()}\n    ${view === "subs" ? subsBlock : bancosBlock}`;
 }
 
+function renderDetalheRegiao(valor) {
+  const base = detalheBase();
+  const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
+  const universo = state.rows.filter(isReal).filter(r => UF_REGIAO[ufDoSub(r)] === valor);
+  const subs = base.filter(r => UF_REGIAO[ufDoSub(r)] === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
+  const porUF = {};
+  subs.forEach(r => {
+    const uf = ufDoSub(r) || "—";
+    porUF[uf] = (porUF[uf] || 0) + 1;
+  });
+  const entriesUF = Object.entries(porUF).sort((a, b) => b[1] - a[1]);
+  const maxUF = entriesUF.length ? entriesUF[0][1] : 1;
+  $("detalheKicker").textContent = "Região";
+  $("detalheTitle").textContent = valor;
+  $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      ${barraStatusDetalhe(universo)}\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(nomeBanco(r) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido neste filtro.</div>'}\n      </div>`;
+}
+
 function abrirDetalhePainel(tipo, valor) {
-  const base = painelBase();
   state.detalheAtual = {
     tipo: tipo,
     valor: valor
@@ -1100,24 +1122,13 @@ function abrirDetalhePainel(tipo, valor) {
   // A barra de status do modal abre alinhada com o KPI selecionado no painel;
   // daí em diante ela manda sozinha, sem depender do filtro de fora.
   state.detalheStatus = state.painelFiltro || "TODOS";
-  const badgeDe = r => badgeStatus(norm(r.status).toUpperCase());
   if (tipo === "banco") {
     renderDetalheBanco(valor);
   } else if (tipo === "uf") {
     state.ufDetalheView = "bancos";
     renderDetalheUf(valor);
   } else if (tipo === "regiao") {
-    const subs = base.filter(r => UF_REGIAO[ufDoSub(r)] === valor).sort((a, b) => norm(a.nome_subs).localeCompare(norm(b.nome_subs), "pt-BR"));
-    const porUF = {};
-    subs.forEach(r => {
-      const uf = ufDoSub(r) || "—";
-      porUF[uf] = (porUF[uf] || 0) + 1;
-    });
-    const entriesUF = Object.entries(porUF).sort((a, b) => b[1] - a[1]);
-    const maxUF = entriesUF.length ? entriesUF[0][1] : 1;
-    $("detalheKicker").textContent = "Região";
-    $("detalheTitle").textContent = valor;
-    $("detalheBody").innerHTML = `\n      <div class="det-resumo">\n        <div class="det-kpi"><b>${subs.length}</b><span>sub${subs.length !== 1 ? "s" : ""} na região</span></div>\n        <div class="det-kpi"><b>${entriesUF.length}</b><span>estado${entriesUF.length !== 1 ? "s" : ""}</span></div>\n      </div>\n      <div class="det-sec">Estados dentro de ${escapeHtml(valor)}</div>\n      <div class="k-bars det-bars">\n        ${entriesUF.map(([uf, n]) => `<div class="k-bar">\n          <span class="n" title="${escapeHtml(uf)}">${escapeHtml(uf)}</span>\n          <span class="track"><span class="fill" style="width:${Math.round(n / maxUF * 100)}%"></span></span>\n          <span class="v">${n}</span></div>`).join("") || '<div class="dl-empty">Sem dados.</div>'}\n      </div>\n      <div class="det-sec">Substabelecidos da região</div>\n      <div class="det-list">\n        ${subs.map(r => `\n          <div class="det-item" data-rowid="${r.id}" title="Ver ficha completa">\n            <div class="det-main">\n              <span class="det-nome">${escapeHtml(norm(r.nome_subs) || "—")}</span>\n              ${badgeDe(r)}\n            </div>\n            <div class="det-meta">\n              <span>UF <b>${escapeHtml(ufDoSub(r) || "—")}</b></span>\n              <span>Banco <b>${escapeHtml(nomeBanco(r) || "—")}</b></span>\n              <span>Cód. sub <b>${escapeHtml(norm(r.cod_substabelecido) || "—")}</b></span>\n              <span>Gerente <b>${escapeHtml(norm(r.gerente) || "—")}</b></span>\n            </div>\n          </div>`).join("") || '<div class="dl-empty">Nenhum substabelecido.</div>'}\n      </div>`;
+    renderDetalheRegiao(valor);
   } else return;
   $("detalheOverlay").classList.add("show");
 }
@@ -2571,6 +2582,7 @@ function sairGestor() {
   state.superintendentes = [];
   state.supervisores = [];
   state.gerentes = [];
+  state.acessos = [];
   state.colabCarregado = false;
 }
 
@@ -2755,9 +2767,11 @@ async function excluirBancoDefinitivo() {
 
 function renderBancos() {
   const fst = $("fBancoStatus").value;
-  const tb = $("bancosTbody"), list = state.bancos.filter(b => !fst || (norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO") === fst);
+  const q = lower($("bancoBusca").value.trim());
+  const tb = $("bancosTbody"), list = state.bancos.filter(b => !fst || (norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO") === fst).filter(b => !q || lower(b.nome_banco).includes(q));
   $("bancosCount").innerHTML = `<b>${list.length}</b> banco${list.length !== 1 ? "s" : ""}`;
   $("bancosEmpty").style.display = list.length ? "none" : "block";
+  $("bancosEmpty").innerHTML = q || fst ? "<b>Nenhum banco encontrado</b>Ajuste a busca ou o filtro de status." : "<b>Nenhum banco cadastrado</b>Clique em “Novo Banco” para começar.";
   tb.innerHTML = list.map(b => {
     const st = norm(b.status).toUpperCase() === "INATIVO" ? "INATIVO" : "ATIVO";
     const badge = st === "ATIVO" ? `<span class="badge ativo">ATIVO</span>` : `<span class="badge inativo">INATIVO</span>`;
@@ -4547,6 +4561,114 @@ async function excluirColab(tipo, id) {
   }
 }
 
+// ---------- Acessos (gestor) ----------
+// Lista os logins do Supabase e permite trocar o papel. Não passa pela REST:
+// mexer em usuário exige a Admin API, que só aceita a service_role key — e
+// essa chave ignora RLS, então ela vive no Worker, nunca aqui. O Worker valida
+// no GoTrue que quem chamou é gestor antes de usá-la. Esconder esta aba não
+// protege nada; quem protege é aquela checagem.
+const ADMIN_USUARIOS = () => `${CONFIG.SUPABASE_URL}/admin/usuarios`;
+
+const PAPEIS = {
+  gestor: "Gestor",
+  diretor: "Diretoria",
+  consulta: "Consulta"
+};
+
+async function carregarAcessos() {
+  if (!state.gestor) return;
+  $("acessosCount").textContent = "carregando…";
+  try {
+    const res = await fetch(ADMIN_USUARIOS(), {
+      headers: H()
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+    const dados = await res.json();
+    state.acessos = dados.usuarios || [];
+    renderAcessos();
+  } catch (e) {
+    console.error("carregarAcessos:", e);
+    state.acessos = [];
+    renderAcessos();
+    toast("Não foi possível listar os logins.", "err");
+  }
+}
+
+function renderAcessos() {
+  const lista = state.acessos || [];
+  $("acessosCount").textContent = `${lista.length} usuário${lista.length === 1 ? "" : "s"}`;
+  $("acessosEmpty").style.display = lista.length ? "none" : "block";
+  $("acessosTbody").innerHTML = lista.map(u => {
+    // Papel nulo é usuário criado pela UI do Supabase sem app_metadata. Ele
+    // entra como diretoria (menor privilégio), mas o certo é definir aqui.
+    const semPapel = !u.papel;
+    const email = escapeHtml(u.email || "—");
+    // O próprio usuário não é clicável: o Worker recusa a troca de papel de
+    // quem está chamando, então abrir o modal só levaria a um erro.
+    const nome = u.eu ? `${email} <span class="badge none">você</span>` : `<span class="linklike" data-acesso-id="${escapeHtml(u.id)}" title="Mudar nível de acesso">${email}</span>`;
+    const papel = semPapel ? '<span class="warn">— sem papel —</span>' : escapeHtml(PAPEIS[u.papel] || u.papel);
+    return `<tr>
+      <td>${nome}</td>
+      <td>${papel}</td>
+      <td>${u.ultimo_login ? fmtData(u.ultimo_login) : "nunca"}</td>
+      <td>${u.criado_em ? fmtData(u.criado_em) : "—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function abrirModalPapel(id) {
+  const u = (state.acessos || []).find(x => x.id === id);
+  if (!u || u.eu) return;
+  state.acessoPapelId = id;
+  $("acessoPapelEmail").textContent = u.email || "—";
+  $("acessoPapelSelect").value = u.papel || "diretor";
+  $("acessoPapelHint").textContent = "";
+  $("acessoPapelHint").className = "hint full";
+  $("acessoPapelOverlay").classList.add("show");
+}
+
+async function salvarPapel() {
+  const id = state.acessoPapelId;
+  const papel = $("acessoPapelSelect").value;
+  const u = (state.acessos || []).find(x => x.id === id);
+  if (!id || !u) return;
+  const hint = $("acessoPapelHint");
+  if (u.papel === papel) {
+    hint.innerHTML = '<span class="warn">Esse já é o nível atual.</span>';
+    return;
+  }
+  hint.textContent = "Salvando…";
+  try {
+    const res = await fetch(`${ADMIN_USUARIOS()}/papel`, {
+      method: "POST",
+      headers: H(),
+      body: JSON.stringify({
+        id: id,
+        papel: papel
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.erro || `HTTP ${res.status}`);
+    }
+    $("acessoPapelOverlay").classList.remove("show");
+    toast(`${u.email} agora é ${PAPEIS[papel]}.`, "ok");
+    carregarAcessos();
+  } catch (e) {
+    console.error("salvarPapel:", e);
+    hint.innerHTML = `<span class="warn">${escapeHtml(e.message || "Falha ao mudar o nível.")}</span>`;
+  }
+}
+
+function bindAcessos() {
+  $("acessosRecarregar").onclick = carregarAcessos;
+  $("acessoPapelSalvar").onclick = salvarPapel;
+  $("viewAcessos").addEventListener("click", e => {
+    const a = e.target.closest("[data-acesso-id]");
+    if (a) abrirModalPapel(a.dataset.acessoId);
+  });
+}
+
 function switchTab(t) {
   $("viewWelcome").style.display = t === "welcome" ? "" : "none";
   $("viewSubs").style.display = t === "subs" ? "" : "none";
@@ -4555,6 +4677,7 @@ function switchTab(t) {
   $("viewBancos").style.display = t === "bancos" ? "" : "none";
   $("viewEmpresas").style.display = t === "empresas" ? "" : "none";
   $("viewColab").style.display = t === "colab" ? "" : "none";
+  $("viewAcessos").style.display = t === "acessos" ? "" : "none";
   $("viewProducao").style.display = t === "producao" ? "" : "none";
   $("viewAgenda").style.display = t === "agenda" ? "" : "none";
   $("viewHist").style.display = t === "hist" ? "" : "none";
@@ -4572,6 +4695,7 @@ function switchTab(t) {
     renderColaboradores();
     carregarColaboradores().then(renderColaboradores);
   }
+  if (t === "acessos") carregarAcessos();
   if (t === "producao") initProducao();
   if (t === "agenda") renderAgenda();
   if (t === "hist") renderHistorico();
@@ -4585,6 +4709,7 @@ function switchTab(t) {
     bancos: "viewBancos",
     empresas: "viewEmpresas",
     colab: "viewColab",
+    acessos: "viewAcessos",
     producao: "viewProducao",
     agenda: "viewAgenda",
     hist: "viewHist",
@@ -4669,6 +4794,7 @@ function bindForm() {
   });
   $("novoBancoBtn").onclick = () => abrirBanco(null);
   $("fBancoStatus").addEventListener("change", renderBancos);
+  $("bancoBusca").addEventListener("input", renderBancos);
   $("bancoSave").onclick = salvarBanco;
   $("b_contato").addEventListener("input", e => {
     e.target.value = mascaraTel(e.target.value);
@@ -4837,6 +4963,7 @@ function bind() {
   });
   bindForm();
   bindAgenda();
+  bindAcessos();
   $("viewPainel").addEventListener("click", e => {
     const d = e.target.closest("[data-det-tipo]");
     if (d) {
@@ -4990,7 +5117,7 @@ function bind() {
     if (st) {
       state.detalheStatus = st.dataset.detStatus;
       const d = state.detalheAtual || {};
-      if (d.tipo === "uf") renderDetalheUf(d.valor); else if (d.tipo === "banco") renderDetalheBanco(d.valor);
+      if (d.tipo === "uf") renderDetalheUf(d.valor); else if (d.tipo === "banco") renderDetalheBanco(d.valor); else if (d.tipo === "regiao") renderDetalheRegiao(d.valor);
       return;
     }
     const item = e.target.closest("[data-rowid]");
